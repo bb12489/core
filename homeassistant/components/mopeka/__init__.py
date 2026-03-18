@@ -13,6 +13,7 @@ from homeassistant.components.bluetooth.passive_update_processor import (
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers import device_registry as dr
 
 from .const import CONF_MEDIUM_TYPE, DEFAULT_MEDIUM_TYPE
 
@@ -54,3 +55,10 @@ async def update_listener(hass: HomeAssistant, entry: MopekaConfigEntry) -> None
 async def async_unload_entry(hass: HomeAssistant, entry: MopekaConfigEntry) -> bool:
     """Unload a config entry."""
     return await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
+
+
+async def async_remove_config_entry_device(
+    hass: HomeAssistant, config_entry: MopekaConfigEntry, device_entry: dr.DeviceEntry
+) -> bool:
+    """Allow removal of a device that is no longer advertising."""
+    return True

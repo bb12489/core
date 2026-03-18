@@ -16,8 +16,19 @@ from homeassistant.components.bluetooth import (
 from homeassistant.config_entries import ConfigFlow, ConfigFlowResult
 from homeassistant.const import CONF_ADDRESS
 from homeassistant.core import callback
+from homeassistant.helpers import selector
 
-from .const import CONF_MEDIUM_TYPE, DEFAULT_MEDIUM_TYPE, DOMAIN, MediumType
+from .const import (
+    CONF_CUSTOM_TANK_HEIGHT,
+    CONF_MEDIUM_TYPE,
+    CONF_TANK_SIZE,
+    DEFAULT_CUSTOM_TANK_HEIGHT,
+    DEFAULT_MEDIUM_TYPE,
+    DEFAULT_TANK_SIZE,
+    DOMAIN,
+    MediumType,
+    TankSize,
+)
 
 
 def format_medium_type(medium_type: Enum) -> str:
@@ -29,14 +40,61 @@ MEDIUM_TYPES_BY_NAME = {
     medium.value: format_medium_type(medium) for medium in MediumType
 }
 
+_CUSTOM_HEIGHT_SELECTOR = selector.NumberSelector(
+    selector.NumberSelectorConfig(
+        min=0,
+        max=5000,
+        step=1,
+        unit_of_measurement="mm",
+        mode=selector.NumberSelectorMode.BOX,
+    )
+)
 
-def async_generate_schema(medium_type: str | None = None) -> vol.Schema:
-    """Return the base schema with formatted medium types."""
+
+def _async_generate_medium_type_schema(
+    medium_type: str | None = None,
+) -> vol.Schema:
+    """Return a schema containing only the medium type selector."""
     return vol.Schema(
         {
             vol.Required(
                 CONF_MEDIUM_TYPE, default=medium_type or DEFAULT_MEDIUM_TYPE
-            ): vol.In(MEDIUM_TYPES_BY_NAME)
+            ): vol.In(MEDIUM_TYPES_BY_NAME),
+        }
+    )
+
+
+def _async_generate_tank_schema(
+    tank_size: str | None = None,
+) -> vol.Schema:
+    """Return a schema containing only the tank preset selector."""
+    return vol.Schema(
+        {
+            vol.Required(
+                CONF_TANK_SIZE, default=tank_size or DEFAULT_TANK_SIZE
+            ): selector.SelectSelector(
+                selector.SelectSelectorConfig(
+                    options=[size.value for size in TankSize],
+                    mode=selector.SelectSelectorMode.DROPDOWN,
+                    translation_key="tank_size",
+                )
+            ),
+        }
+    )
+
+
+def _async_generate_custom_height_schema(
+    custom_tank_height: int | None = None,
+) -> vol.Schema:
+    """Return a schema containing only the custom tank height input."""
+    return vol.Schema(
+        {
+            vol.Required(
+                CONF_CUSTOM_TANK_HEIGHT,
+                default=custom_tank_height
+                if custom_tank_height is not None
+                else DEFAULT_CUSTOM_TANK_HEIGHT,
+            ): _CUSTOM_HEIGHT_SELECTOR,
         }
     )
 
@@ -51,6 +109,9 @@ class MopekaConfigFlow(ConfigFlow, domain=DOMAIN):
         self._discovery_info: BluetoothServiceInfoBleak | None = None
         self._discovered_device: DeviceData | None = None
         self._discovered_devices: dict[str, str] = {}
+        self._medium_type: str = DEFAULT_MEDIUM_TYPE
+        self._title: str = ""
+        self._address: str | None = None
 
     @callback
     @staticmethod
@@ -83,33 +144,150 @@ class MopekaConfigFlow(ConfigFlow, domain=DOMAIN):
         discovery_info = self._discovery_info
         title = device.title or device.get_device_name() or discovery_info.name
         if user_input is not None:
+            self._medium_type = user_input[CONF_MEDIUM_TYPE]
+            self._title = title
             self._discovered_devices[discovery_info.address] = title
-            return self.async_create_entry(
-                title=self._discovered_devices[discovery_info.address],
-                data={CONF_MEDIUM_TYPE: user_input[CONF_MEDIUM_TYPE]},
-            )
+            if self._medium_type == DEFAULT_MEDIUM_TYPE:
+                return await self.async_step_tank_config()
+            return await self.async_step_custom_height()
 
-        self._set_confirm_only()
         placeholders = {"name": title}
         self.context["title_placeholders"] = placeholders
         return self.async_show_form(
             step_id="bluetooth_confirm",
             description_placeholders=placeholders,
-            data_schema=async_generate_schema(),
+            data_schema=_async_generate_medium_type_schema(),
+        )
+
+    async def _async_create_config_entry(
+        self, tank_size: str, custom_height: int
+    ) -> ConfigFlowResult:
+        """Create the config entry with the collected parameters."""
+        data = {
+            CONF_MEDIUM_TYPE: self._medium_type,
+            CONF_TANK_SIZE: tank_size,
+            CONF_CUSTOM_TANK_HEIGHT: custom_height,
+        }
+        if self._discovery_info is not None:
+            return self.async_create_entry(title=self._title, data=data)
+        assert self._address is not None
+        await self.async_set_unique_id(self._address, raise_on_progress=False)
+        self._abort_if_unique_id_configured()
+        return self.async_create_entry(
+            title=self._discovered_devices[self._address], data=data
+        )
+
+    async def async_step_tank_config(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Select a propane tank preset."""
+        if user_input is not None:
+            tank_size = user_input.get(CONF_TANK_SIZE, TankSize.CUSTOM)
+            if tank_size == TankSize.CUSTOM:
+                return await self.async_step_custom_height()
+            return await self._async_create_config_entry(tank_size, 0)
+
+        return self.async_show_form(
+            step_id="tank_config",
+            data_schema=_async_generate_tank_schema(),
+        )
+
+    async def async_step_custom_height(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Enter a custom tank height."""
+        if user_input is not None:
+            height = int(
+                user_input.get(CONF_CUSTOM_TANK_HEIGHT, DEFAULT_CUSTOM_TANK_HEIGHT)
+            )
+            return await self._async_create_config_entry(TankSize.CUSTOM, height)
+
+        return self.async_show_form(
+            step_id="custom_height",
+            data_schema=_async_generate_custom_height_schema(),
+        )
+
+    async def async_step_reconfigure(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Handle reconfiguration — select medium type."""
+        if user_input is not None:
+            self._medium_type = user_input[CONF_MEDIUM_TYPE]
+            if self._medium_type == DEFAULT_MEDIUM_TYPE:
+                return await self.async_step_reconfigure_tank_config()
+            return await self.async_step_reconfigure_custom_height()
+
+        return self.async_show_form(
+            step_id="reconfigure",
+            data_schema=_async_generate_medium_type_schema(
+                medium_type=self._get_reconfigure_entry().data.get(CONF_MEDIUM_TYPE),
+            ),
+        )
+
+    async def async_step_reconfigure_tank_config(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Handle reconfiguration — select tank preset."""
+        entry = self._get_reconfigure_entry()
+        if user_input is not None:
+            tank_size = user_input.get(CONF_TANK_SIZE, TankSize.CUSTOM)
+            if tank_size == TankSize.CUSTOM:
+                return await self.async_step_reconfigure_custom_height()
+            return self.async_update_reload_and_abort(
+                entry,
+                data_updates={
+                    CONF_MEDIUM_TYPE: self._medium_type,
+                    CONF_TANK_SIZE: tank_size,
+                    CONF_CUSTOM_TANK_HEIGHT: 0,
+                },
+            )
+
+        existing_tank_size = entry.data.get(CONF_TANK_SIZE, DEFAULT_TANK_SIZE)
+        return self.async_show_form(
+            step_id="reconfigure_tank_config",
+            data_schema=_async_generate_tank_schema(
+                tank_size=existing_tank_size,
+            ),
+        )
+
+    async def async_step_reconfigure_custom_height(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Handle reconfiguration — enter custom tank height."""
+        entry = self._get_reconfigure_entry()
+        if user_input is not None:
+            height = int(
+                user_input.get(CONF_CUSTOM_TANK_HEIGHT, DEFAULT_CUSTOM_TANK_HEIGHT)
+            )
+            return self.async_update_reload_and_abort(
+                entry,
+                data_updates={
+                    CONF_MEDIUM_TYPE: self._medium_type,
+                    CONF_TANK_SIZE: TankSize.CUSTOM,
+                    CONF_CUSTOM_TANK_HEIGHT: height,
+                },
+            )
+
+        existing_height = entry.data.get(
+            CONF_CUSTOM_TANK_HEIGHT, DEFAULT_CUSTOM_TANK_HEIGHT
+        )
+        return self.async_show_form(
+            step_id="reconfigure_custom_height",
+            data_schema=_async_generate_custom_height_schema(
+                custom_tank_height=existing_height,
+            ),
         )
 
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
-        """Handle the user step to pick discovered device and select medium type."""
+        """Handle the user step to pick a discovered device and select medium type."""
         if user_input is not None:
-            address = user_input[CONF_ADDRESS]
-            await self.async_set_unique_id(address, raise_on_progress=False)
-            self._abort_if_unique_id_configured()
-            return self.async_create_entry(
-                title=self._discovered_devices[address],
-                data={CONF_MEDIUM_TYPE: user_input[CONF_MEDIUM_TYPE]},
-            )
+            self._medium_type = user_input[CONF_MEDIUM_TYPE]
+            self._address = user_input[CONF_ADDRESS]
+            if self._medium_type == DEFAULT_MEDIUM_TYPE:
+                return await self.async_step_tank_config()
+            return await self.async_step_custom_height()
 
         current_addresses = self._async_current_ids(include_ignore=False)
         for discovery_info in async_discovered_service_info(self.hass, False):
@@ -130,7 +308,7 @@ class MopekaConfigFlow(ConfigFlow, domain=DOMAIN):
             data_schema=vol.Schema(
                 {
                     vol.Required(CONF_ADDRESS): vol.In(self._discovered_devices),
-                    **async_generate_schema().schema,
+                    **_async_generate_medium_type_schema().schema,
                 }
             ),
         )
@@ -139,14 +317,41 @@ class MopekaConfigFlow(ConfigFlow, domain=DOMAIN):
 class MopekaOptionsFlow(config_entries.OptionsFlow):
     """Handle options for the Mopeka component."""
 
+    def __init__(self) -> None:
+        """Initialize options flow."""
+        self._medium_type: str | None = None
+
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
-        """Handle options flow."""
+        """Handle options flow — select medium type."""
         if user_input is not None:
+            self._medium_type = user_input[CONF_MEDIUM_TYPE]
+            if self._medium_type == DEFAULT_MEDIUM_TYPE:
+                return await self.async_step_tank_config()
+            return await self.async_step_custom_height()
+
+        return self.async_show_form(
+            step_id="init",
+            data_schema=_async_generate_medium_type_schema(
+                medium_type=self.config_entry.data.get(CONF_MEDIUM_TYPE),
+            ),
+        )
+
+    async def async_step_tank_config(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Select a propane tank preset."""
+        assert self._medium_type is not None
+        if user_input is not None:
+            tank_size = user_input.get(CONF_TANK_SIZE, TankSize.CUSTOM)
+            if tank_size == TankSize.CUSTOM:
+                return await self.async_step_custom_height()
             new_data = {
                 **self.config_entry.data,
-                CONF_MEDIUM_TYPE: user_input[CONF_MEDIUM_TYPE],
+                CONF_MEDIUM_TYPE: self._medium_type,
+                CONF_TANK_SIZE: tank_size,
+                CONF_CUSTOM_TANK_HEIGHT: 0,
             }
             self.hass.config_entries.async_update_entry(
                 self.config_entry, data=new_data
@@ -154,9 +359,43 @@ class MopekaOptionsFlow(config_entries.OptionsFlow):
             await self.hass.config_entries.async_reload(self.config_entry.entry_id)
             return self.async_create_entry(title="", data={})
 
+        existing_tank_size = self.config_entry.data.get(
+            CONF_TANK_SIZE, DEFAULT_TANK_SIZE
+        )
         return self.async_show_form(
-            step_id="init",
-            data_schema=async_generate_schema(
-                self.config_entry.data.get(CONF_MEDIUM_TYPE)
+            step_id="tank_config",
+            data_schema=_async_generate_tank_schema(
+                tank_size=existing_tank_size,
+            ),
+        )
+
+    async def async_step_custom_height(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Enter a custom tank height."""
+        assert self._medium_type is not None
+        if user_input is not None:
+            height = int(
+                user_input.get(CONF_CUSTOM_TANK_HEIGHT, DEFAULT_CUSTOM_TANK_HEIGHT)
+            )
+            new_data = {
+                **self.config_entry.data,
+                CONF_MEDIUM_TYPE: self._medium_type,
+                CONF_TANK_SIZE: TankSize.CUSTOM,
+                CONF_CUSTOM_TANK_HEIGHT: height,
+            }
+            self.hass.config_entries.async_update_entry(
+                self.config_entry, data=new_data
+            )
+            await self.hass.config_entries.async_reload(self.config_entry.entry_id)
+            return self.async_create_entry(title="", data={})
+
+        existing_height = self.config_entry.data.get(
+            CONF_CUSTOM_TANK_HEIGHT, DEFAULT_CUSTOM_TANK_HEIGHT
+        )
+        return self.async_show_form(
+            step_id="custom_height",
+            data_schema=_async_generate_custom_height_schema(
+                custom_tank_height=existing_height,
             ),
         )

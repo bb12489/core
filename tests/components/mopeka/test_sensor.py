@@ -1,10 +1,22 @@
 """Test the Mopeka sensors."""
 
-from homeassistant.components.mopeka.const import DOMAIN
+import math
+
+from homeassistant.components.mopeka.const import (
+    CONF_CUSTOM_TANK_HEIGHT,
+    CONF_MEDIUM_TYPE,
+    CONF_TANK_SIZE,
+    DOMAIN,
+    HORIZONTAL_TANK_SIZES,
+    TANK_SIZE_RANGES,
+    MediumType,
+    TankSize,
+)
 from homeassistant.components.sensor import ATTR_STATE_CLASS
 from homeassistant.const import (
     ATTR_FRIENDLY_NAME,
     ATTR_UNIT_OF_MEASUREMENT,
+    PERCENTAGE,
     STATE_UNKNOWN,
     UnitOfLength,
     UnitOfTemperature,
@@ -19,6 +31,33 @@ from . import (
 
 from tests.common import MockConfigEntry
 from tests.components.bluetooth import inject_bluetooth_service_info
+
+# Raw tank level reported by PRO_GOOD_SIGNAL_SERVICE_INFO
+_GOOD_SIGNAL_LEVEL_MM = 341
+
+
+def _circular_segment_fraction(h: float, diameter: float) -> float:
+    """Return the volume fraction (0..1) of a horizontal cylinder filled to height h."""
+    r = diameter / 2.0
+    if h <= 0.0:
+        return 0.0
+    if h >= diameter:
+        return 1.0
+    return (r**2 * math.acos((r - h) / r) - (r - h) * math.sqrt(2 * r * h - h**2)) / (
+        math.pi * r**2
+    )
+
+
+def _expected_fill_percent(level_mm: int, tank_size: TankSize) -> float:
+    """Return the expected fill percentage for a given level and preset tank size."""
+    empty_mm, full_mm = TANK_SIZE_RANGES[tank_size]
+    if tank_size in HORIZONTAL_TANK_SIZES:
+        frac_empty = _circular_segment_fraction(empty_mm, full_mm)
+        frac_reading = _circular_segment_fraction(level_mm, full_mm)
+        pct = (frac_reading - frac_empty) / (1.0 - frac_empty) * 100.0
+    else:
+        pct = (level_mm - empty_mm) / (full_mm - empty_mm) * 100.0
+    return round(min(100.0, max(0.0, pct)), 1)
 
 
 async def test_sensors_unusable_signal(hass: HomeAssistant) -> None:
@@ -118,6 +157,618 @@ async def test_sensors_good_signal(hass: HomeAssistant) -> None:
     assert tank_sensor_attrs[ATTR_FRIENDLY_NAME] == "Pro Plus EEFF Tank Level"
     assert tank_sensor_attrs[ATTR_UNIT_OF_MEASUREMENT] == UnitOfLength.MILLIMETERS
     assert tank_sensor_attrs[ATTR_STATE_CLASS] == "measurement"
+
+    assert await hass.config_entries.async_unload(entry.entry_id)
+    await hass.async_block_till_done()
+
+
+async def test_sensors_good_signal_20lb_tank(hass: HomeAssistant) -> None:
+    """Test tank fill percentage for a 20 lb preset.
+
+    341 mm exceeds the 20 lb full level (254 mm), so the result is capped at 100%.
+    """
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        unique_id="aa:bb:cc:dd:ee:ff",
+        data={CONF_TANK_SIZE: TankSize.LB_20},
+    )
+    entry.add_to_hass(hass)
+
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    inject_bluetooth_service_info(hass, PRO_GOOD_SIGNAL_SERVICE_INFO)
+    await hass.async_block_till_done()
+    assert len(hass.states.async_all("sensor")) == 5
+
+    pct_sensor = hass.states.get("sensor.pro_plus_eeff_tank_fill")
+    assert pct_sensor is not None
+    # 341 mm exceeds the 20 lb full level (254 mm), so the result is capped at 100%.
+    assert float(pct_sensor.state) == 100.0
+    assert pct_sensor.attributes[ATTR_UNIT_OF_MEASUREMENT] == PERCENTAGE
+    assert pct_sensor.attributes[ATTR_STATE_CLASS] == "measurement"
+
+    assert await hass.config_entries.async_unload(entry.entry_id)
+    await hass.async_block_till_done()
+
+
+async def test_sensors_good_signal_30lb_tank(hass: HomeAssistant) -> None:
+    """Test tank fill percentage for a 30 lb preset (empty=38.1, full=381).
+
+    Expected: (341 - 38.1) / (381 - 38.1) * 100 ≈ 88.3%.
+    """
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        unique_id="aa:bb:cc:dd:ee:ff",
+        data={CONF_TANK_SIZE: TankSize.LB_30},
+    )
+    entry.add_to_hass(hass)
+
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    inject_bluetooth_service_info(hass, PRO_GOOD_SIGNAL_SERVICE_INFO)
+    await hass.async_block_till_done()
+    assert len(hass.states.async_all("sensor")) == 5
+
+    pct_sensor = hass.states.get("sensor.pro_plus_eeff_tank_fill")
+    assert pct_sensor is not None
+    assert float(pct_sensor.state) == _expected_fill_percent(
+        _GOOD_SIGNAL_LEVEL_MM, TankSize.LB_30
+    )
+
+    assert await hass.config_entries.async_unload(entry.entry_id)
+    await hass.async_block_till_done()
+
+
+async def test_sensors_good_signal_40lb_tank(hass: HomeAssistant) -> None:
+    """Test tank fill percentage for a 40 lb preset (empty=38.1, full=508).
+
+    Expected: (341 - 38.1) / (508 - 38.1) * 100 ≈ 64.5%.
+    """
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        unique_id="aa:bb:cc:dd:ee:ff",
+        data={CONF_TANK_SIZE: TankSize.LB_40},
+    )
+    entry.add_to_hass(hass)
+
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    inject_bluetooth_service_info(hass, PRO_GOOD_SIGNAL_SERVICE_INFO)
+    await hass.async_block_till_done()
+    assert len(hass.states.async_all("sensor")) == 5
+
+    pct_sensor = hass.states.get("sensor.pro_plus_eeff_tank_fill")
+    assert pct_sensor is not None
+    assert float(pct_sensor.state) == _expected_fill_percent(
+        _GOOD_SIGNAL_LEVEL_MM, TankSize.LB_40
+    )
+
+    assert await hass.config_entries.async_unload(entry.entry_id)
+    await hass.async_block_till_done()
+
+
+async def test_sensors_good_signal_custom_tank(hass: HomeAssistant) -> None:
+    """Test tank fill percentage for a custom tank (empty=0, full=user_height).
+
+    Uses height=682 mm: 341 / 682 * 100 = 50.0%.
+    """
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        unique_id="aa:bb:cc:dd:ee:ff",
+        data={
+            CONF_TANK_SIZE: TankSize.CUSTOM,
+            CONF_CUSTOM_TANK_HEIGHT: 682,
+        },
+    )
+    entry.add_to_hass(hass)
+
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    inject_bluetooth_service_info(hass, PRO_GOOD_SIGNAL_SERVICE_INFO)
+    await hass.async_block_till_done()
+    assert len(hass.states.async_all("sensor")) == 5
+
+    pct_sensor = hass.states.get("sensor.pro_plus_eeff_tank_fill")
+    assert pct_sensor is not None
+    assert float(pct_sensor.state) == 50.0
+
+    assert await hass.config_entries.async_unload(entry.entry_id)
+    await hass.async_block_till_done()
+
+
+async def test_sensors_custom_zero_height_disables_percent(
+    hass: HomeAssistant,
+) -> None:
+    """Test that Custom with height=0 does not create a percentage sensor."""
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        unique_id="aa:bb:cc:dd:ee:ff",
+        data={
+            CONF_TANK_SIZE: TankSize.CUSTOM,
+            CONF_CUSTOM_TANK_HEIGHT: 0,
+        },
+    )
+    entry.add_to_hass(hass)
+
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    inject_bluetooth_service_info(hass, PRO_GOOD_SIGNAL_SERVICE_INFO)
+    await hass.async_block_till_done()
+    assert len(hass.states.async_all("sensor")) == 4
+    assert hass.states.get("sensor.pro_plus_eeff_tank_fill") is None
+
+    assert await hass.config_entries.async_unload(entry.entry_id)
+    await hass.async_block_till_done()
+
+
+async def test_sensors_fill_percent_capped_at_100(hass: HomeAssistant) -> None:
+    """Test that fill percentage is capped at 100% when reading exceeds full level."""
+    # Custom height of 100 mm; reading of 341 mm far exceeds it.
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        unique_id="aa:bb:cc:dd:ee:ff",
+        data={
+            CONF_TANK_SIZE: TankSize.CUSTOM,
+            CONF_CUSTOM_TANK_HEIGHT: 100,
+        },
+    )
+    entry.add_to_hass(hass)
+
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    inject_bluetooth_service_info(hass, PRO_GOOD_SIGNAL_SERVICE_INFO)
+    await hass.async_block_till_done()
+
+    pct_sensor = hass.states.get("sensor.pro_plus_eeff_tank_fill")
+    assert pct_sensor is not None
+    assert float(pct_sensor.state) == 100.0
+
+    assert await hass.config_entries.async_unload(entry.entry_id)
+    await hass.async_block_till_done()
+
+
+async def test_sensors_good_signal_100lb_tank(hass: HomeAssistant) -> None:
+    """Test tank fill percentage for a 100 lb preset (empty=38.1, full=813).
+
+    Expected: (341 - 38.1) / (813 - 38.1) * 100 ≈ 39.1%.
+    """
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        unique_id="aa:bb:cc:dd:ee:ff",
+        data={CONF_TANK_SIZE: TankSize.LB_100},
+    )
+    entry.add_to_hass(hass)
+
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    inject_bluetooth_service_info(hass, PRO_GOOD_SIGNAL_SERVICE_INFO)
+    await hass.async_block_till_done()
+    assert len(hass.states.async_all("sensor")) == 5
+
+    pct_sensor = hass.states.get("sensor.pro_plus_eeff_tank_fill")
+    assert pct_sensor is not None
+    assert float(pct_sensor.state) == _expected_fill_percent(
+        _GOOD_SIGNAL_LEVEL_MM, TankSize.LB_100
+    )
+
+    assert await hass.config_entries.async_unload(entry.entry_id)
+    await hass.async_block_till_done()
+
+
+async def test_sensors_good_signal_100gal_h_tank(hass: HomeAssistant) -> None:
+    """Test tank fill percentage for a 100 gal horizontal preset (diameter=600.7).
+
+    Uses cylindrical cross-section geometry for volume-based fill calculation.
+    """
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        unique_id="aa:bb:cc:dd:ee:ff",
+        data={CONF_TANK_SIZE: TankSize.GAL_100_H},
+    )
+    entry.add_to_hass(hass)
+
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    inject_bluetooth_service_info(hass, PRO_GOOD_SIGNAL_SERVICE_INFO)
+    await hass.async_block_till_done()
+    assert len(hass.states.async_all("sensor")) == 5
+
+    pct_sensor = hass.states.get("sensor.pro_plus_eeff_tank_fill")
+    assert pct_sensor is not None
+    assert float(pct_sensor.state) == _expected_fill_percent(
+        _GOOD_SIGNAL_LEVEL_MM, TankSize.GAL_100_H
+    )
+
+    assert await hass.config_entries.async_unload(entry.entry_id)
+    await hass.async_block_till_done()
+
+
+async def test_sensors_good_signal_500gal_h_tank(hass: HomeAssistant) -> None:
+    """Test tank fill percentage for a 500 gal horizontal preset (diameter=939.8).
+
+    Uses cylindrical cross-section geometry for volume-based fill calculation.
+    """
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        unique_id="aa:bb:cc:dd:ee:ff",
+        data={CONF_TANK_SIZE: TankSize.GAL_500_H},
+    )
+    entry.add_to_hass(hass)
+
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    inject_bluetooth_service_info(hass, PRO_GOOD_SIGNAL_SERVICE_INFO)
+    await hass.async_block_till_done()
+    assert len(hass.states.async_all("sensor")) == 5
+
+    pct_sensor = hass.states.get("sensor.pro_plus_eeff_tank_fill")
+    assert pct_sensor is not None
+    assert float(pct_sensor.state) == _expected_fill_percent(
+        _GOOD_SIGNAL_LEVEL_MM, TankSize.GAL_500_H
+    )
+
+    assert await hass.config_entries.async_unload(entry.entry_id)
+    await hass.async_block_till_done()
+
+
+async def test_sensors_good_signal_1000gal_h_tank(hass: HomeAssistant) -> None:
+    """Test tank fill percentage for a 1000 gal horizontal preset (diameter=1025.7).
+
+    Uses cylindrical cross-section geometry for volume-based fill calculation.
+    """
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        unique_id="aa:bb:cc:dd:ee:ff",
+        data={CONF_TANK_SIZE: TankSize.GAL_1000_H},
+    )
+    entry.add_to_hass(hass)
+
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    inject_bluetooth_service_info(hass, PRO_GOOD_SIGNAL_SERVICE_INFO)
+    await hass.async_block_till_done()
+    assert len(hass.states.async_all("sensor")) == 5
+
+    pct_sensor = hass.states.get("sensor.pro_plus_eeff_tank_fill")
+    assert pct_sensor is not None
+    assert float(pct_sensor.state) == _expected_fill_percent(
+        _GOOD_SIGNAL_LEVEL_MM, TankSize.GAL_1000_H
+    )
+
+    assert await hass.config_entries.async_unload(entry.entry_id)
+    await hass.async_block_till_done()
+
+
+async def test_sensors_unusable_signal_with_tank_size(hass: HomeAssistant) -> None:
+    """Test that the fill percentage shows unknown when the signal is unusable."""
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        unique_id="aa:bb:cc:dd:ee:ff",
+        data={CONF_TANK_SIZE: TankSize.LB_30},
+    )
+    entry.add_to_hass(hass)
+
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    inject_bluetooth_service_info(hass, PRO_UNUSABLE_SIGNAL_SERVICE_INFO)
+    await hass.async_block_till_done()
+    assert len(hass.states.async_all("sensor")) == 5
+
+    pct_sensor = hass.states.get("sensor.pro_plus_eeff_tank_fill")
+    assert pct_sensor is not None
+    assert pct_sensor.state == STATE_UNKNOWN
+
+    assert await hass.config_entries.async_unload(entry.entry_id)
+    await hass.async_block_till_done()
+
+
+async def test_sensors_good_signal_12_2gal_rv_h_tank(hass: HomeAssistant) -> None:
+    """Test tank fill percentage for a 12.2 gal RV horizontal ASME preset.
+
+    341 mm exceeds the full level (301.0 mm), so the result is capped at 100%.
+    Uses cylindrical cross-section geometry.
+    """
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        unique_id="aa:bb:cc:dd:ee:ff",
+        data={CONF_TANK_SIZE: TankSize.GAL_12_2_RV_H},
+    )
+    entry.add_to_hass(hass)
+
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    inject_bluetooth_service_info(hass, PRO_GOOD_SIGNAL_SERVICE_INFO)
+    await hass.async_block_till_done()
+    assert len(hass.states.async_all("sensor")) == 5
+
+    pct_sensor = hass.states.get("sensor.pro_plus_eeff_tank_fill")
+    assert pct_sensor is not None
+    # 341 mm exceeds the 12.2 gal RV h full level (301.0 mm), so the result is capped at 100%.
+    assert float(pct_sensor.state) == 100.0
+
+    assert await hass.config_entries.async_unload(entry.entry_id)
+    await hass.async_block_till_done()
+
+
+async def test_sensors_good_signal_16gal_rv_h_tank(hass: HomeAssistant) -> None:
+    """Test tank fill percentage for a 16 gal RV horizontal ASME preset (diameter=346.7).
+
+    Uses cylindrical cross-section geometry for volume-based fill calculation.
+    """
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        unique_id="aa:bb:cc:dd:ee:ff",
+        data={CONF_TANK_SIZE: TankSize.GAL_16_RV_H},
+    )
+    entry.add_to_hass(hass)
+
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    inject_bluetooth_service_info(hass, PRO_GOOD_SIGNAL_SERVICE_INFO)
+    await hass.async_block_till_done()
+    assert len(hass.states.async_all("sensor")) == 5
+
+    pct_sensor = hass.states.get("sensor.pro_plus_eeff_tank_fill")
+    assert pct_sensor is not None
+    pct_sensor = hass.states.get("sensor.pro_plus_eeff_tank_fill")
+    assert pct_sensor is not None
+    assert float(pct_sensor.state) == _expected_fill_percent(
+        _GOOD_SIGNAL_LEVEL_MM, TankSize.GAL_16_RV_H
+    )
+
+    assert await hass.config_entries.async_unload(entry.entry_id)
+    await hass.async_block_till_done()
+
+
+async def test_sensors_good_signal_20_3gal_rv_h_tank(hass: HomeAssistant) -> None:
+    """Test tank fill percentage for a 20.3 gal RV horizontal ASME preset (diameter=393.7).
+
+    Uses cylindrical cross-section geometry for volume-based fill calculation.
+    """
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        unique_id="aa:bb:cc:dd:ee:ff",
+        data={CONF_TANK_SIZE: TankSize.GAL_20_3_RV_H},
+    )
+    entry.add_to_hass(hass)
+
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    inject_bluetooth_service_info(hass, PRO_GOOD_SIGNAL_SERVICE_INFO)
+    await hass.async_block_till_done()
+    assert len(hass.states.async_all("sensor")) == 5
+
+    pct_sensor = hass.states.get("sensor.pro_plus_eeff_tank_fill")
+    assert pct_sensor is not None
+    pct_sensor = hass.states.get("sensor.pro_plus_eeff_tank_fill")
+    assert pct_sensor is not None
+    assert float(pct_sensor.state) == _expected_fill_percent(
+        _GOOD_SIGNAL_LEVEL_MM, TankSize.GAL_20_3_RV_H
+    )
+
+    assert await hass.config_entries.async_unload(entry.entry_id)
+    await hass.async_block_till_done()
+
+
+async def test_sensors_good_signal_29_3gal_rv_h_tank(hass: HomeAssistant) -> None:
+    """Test tank fill percentage for a 29.3 gal RV horizontal ASME preset (diameter=369.6).
+
+    Uses cylindrical cross-section geometry for volume-based fill calculation.
+    """
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        unique_id="aa:bb:cc:dd:ee:ff",
+        data={CONF_TANK_SIZE: TankSize.GAL_29_3_RV_H},
+    )
+    entry.add_to_hass(hass)
+
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    inject_bluetooth_service_info(hass, PRO_GOOD_SIGNAL_SERVICE_INFO)
+    await hass.async_block_till_done()
+    assert len(hass.states.async_all("sensor")) == 5
+
+    pct_sensor = hass.states.get("sensor.pro_plus_eeff_tank_fill")
+    assert pct_sensor is not None
+    pct_sensor = hass.states.get("sensor.pro_plus_eeff_tank_fill")
+    assert pct_sensor is not None
+    assert float(pct_sensor.state) == _expected_fill_percent(
+        _GOOD_SIGNAL_LEVEL_MM, TankSize.GAL_29_3_RV_H
+    )
+
+    assert await hass.config_entries.async_unload(entry.entry_id)
+    await hass.async_block_till_done()
+
+
+async def test_sensors_medium_type_diagnostic(hass: HomeAssistant) -> None:
+    """Test that the medium type diagnostic sensor appears when CONF_MEDIUM_TYPE is set."""
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        unique_id="aa:bb:cc:dd:ee:ff",
+        data={CONF_MEDIUM_TYPE: MediumType.PROPANE.value},
+    )
+    entry.add_to_hass(hass)
+
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    inject_bluetooth_service_info(hass, PRO_GOOD_SIGNAL_SERVICE_INFO)
+    await hass.async_block_till_done()
+    # 4 base sensors + medium_type (no tank size → no fill %)
+    assert len(hass.states.async_all("sensor")) == 5
+
+    med_sensor = hass.states.get("sensor.pro_plus_eeff_medium_type")
+    assert med_sensor is not None
+    assert med_sensor.state == MediumType.PROPANE.value
+
+    assert await hass.config_entries.async_unload(entry.entry_id)
+    await hass.async_block_till_done()
+
+
+async def test_sensors_propane_preset_diagnostic(hass: HomeAssistant) -> None:
+    """Test that the propane preset diagnostic sensor appears for propane entries."""
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        unique_id="aa:bb:cc:dd:ee:ff",
+        data={
+            CONF_MEDIUM_TYPE: MediumType.PROPANE.value,
+            CONF_TANK_SIZE: TankSize.LB_30,
+        },
+    )
+    entry.add_to_hass(hass)
+
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    inject_bluetooth_service_info(hass, PRO_GOOD_SIGNAL_SERVICE_INFO)
+    await hass.async_block_till_done()
+    # 4 base sensors + tank fill + medium type + propane preset
+    assert len(hass.states.async_all("sensor")) == 7
+
+    preset_sensor = hass.states.get("sensor.pro_plus_eeff_propane_preset")
+    assert preset_sensor is not None
+    assert preset_sensor.state == TankSize.LB_30
+
+    assert await hass.config_entries.async_unload(entry.entry_id)
+    await hass.async_block_till_done()
+
+
+async def test_sensors_propane_preset_only_for_propane(hass: HomeAssistant) -> None:
+    """Test that the propane preset diagnostic sensor is hidden for non-propane mediums."""
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        unique_id="aa:bb:cc:dd:ee:ff",
+        data={
+            CONF_MEDIUM_TYPE: MediumType.GASOLINE.value,
+            CONF_TANK_SIZE: TankSize.LB_30,
+        },
+    )
+    entry.add_to_hass(hass)
+
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    inject_bluetooth_service_info(hass, PRO_GOOD_SIGNAL_SERVICE_INFO)
+    await hass.async_block_till_done()
+    # 4 base sensors + tank fill + medium type
+    assert len(hass.states.async_all("sensor")) == 6
+    assert hass.states.get("sensor.pro_plus_eeff_propane_preset") is None
+
+    assert await hass.config_entries.async_unload(entry.entry_id)
+    await hass.async_block_till_done()
+
+
+async def test_sensors_medium_type_non_propane(hass: HomeAssistant) -> None:
+    """Test the medium type diagnostic sensor for a non-propane medium with custom height."""
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        unique_id="aa:bb:cc:dd:ee:ff",
+        data={
+            CONF_MEDIUM_TYPE: MediumType.FRESH_WATER.value,
+            CONF_TANK_SIZE: TankSize.CUSTOM,
+            CONF_CUSTOM_TANK_HEIGHT: 500,
+        },
+    )
+    entry.add_to_hass(hass)
+
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    inject_bluetooth_service_info(hass, PRO_GOOD_SIGNAL_SERVICE_INFO)
+    await hass.async_block_till_done()
+    # 4 base + medium_type + tank_fill = 6
+    assert len(hass.states.async_all("sensor")) == 6
+
+    med_sensor = hass.states.get("sensor.pro_plus_eeff_medium_type")
+    assert med_sensor is not None
+    assert med_sensor.state == MediumType.FRESH_WATER.value
+
+    assert await hass.config_entries.async_unload(entry.entry_id)
+    await hass.async_block_till_done()
+
+
+async def test_sensors_medium_type_impacts_tank_level(hass: HomeAssistant) -> None:
+    """Test that medium type changes tank level conversion for the same reading.
+
+    The mopeka_iot_ble parser applies a temperature-dependent polynomial per
+    medium type. For PRO_GOOD_SIGNAL_SERVICE_INFO this yields:
+    - propane: 341 mm
+    - fresh water: 711 mm
+    """
+    propane_entry = MockConfigEntry(
+        domain=DOMAIN,
+        unique_id="aa:bb:cc:dd:ee:ff",
+        data={CONF_MEDIUM_TYPE: MediumType.PROPANE.value},
+    )
+    propane_entry.add_to_hass(hass)
+
+    assert await hass.config_entries.async_setup(propane_entry.entry_id)
+    await hass.async_block_till_done()
+
+    inject_bluetooth_service_info(hass, PRO_GOOD_SIGNAL_SERVICE_INFO)
+    await hass.async_block_till_done()
+
+    propane_tank_sensor = hass.states.get("sensor.pro_plus_eeff_tank_level")
+    assert propane_tank_sensor is not None
+    assert propane_tank_sensor.state == "341"
+
+    assert await hass.config_entries.async_unload(propane_entry.entry_id)
+    await hass.async_block_till_done()
+
+    freshwater_entry = MockConfigEntry(
+        domain=DOMAIN,
+        unique_id="aa:bb:cc:dd:ee:ff",
+        data={CONF_MEDIUM_TYPE: MediumType.FRESH_WATER.value},
+    )
+    freshwater_entry.add_to_hass(hass)
+
+    assert await hass.config_entries.async_setup(freshwater_entry.entry_id)
+    await hass.async_block_till_done()
+
+    inject_bluetooth_service_info(hass, PRO_GOOD_SIGNAL_SERVICE_INFO)
+    await hass.async_block_till_done()
+
+    freshwater_tank_sensor = hass.states.get("sensor.pro_plus_eeff_tank_level")
+    assert freshwater_tank_sensor is not None
+    assert freshwater_tank_sensor.state == "711"
+
+    assert await hass.config_entries.async_unload(freshwater_entry.entry_id)
+    await hass.async_block_till_done()
+
+
+async def test_sensors_medium_type_absent_for_legacy_entries(
+    hass: HomeAssistant,
+) -> None:
+    """Test that legacy entries without CONF_MEDIUM_TYPE have no medium type sensor."""
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        unique_id="aa:bb:cc:dd:ee:ff",
+        # No CONF_MEDIUM_TYPE — simulates a pre-existing legacy config entry
+    )
+    entry.add_to_hass(hass)
+
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    inject_bluetooth_service_info(hass, PRO_GOOD_SIGNAL_SERVICE_INFO)
+    await hass.async_block_till_done()
+    assert len(hass.states.async_all("sensor")) == 4
+    assert hass.states.get("sensor.pro_plus_eeff_medium_type") is None
 
     assert await hass.config_entries.async_unload(entry.entry_id)
     await hass.async_block_till_done()
