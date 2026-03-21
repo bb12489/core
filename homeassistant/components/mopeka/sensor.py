@@ -150,24 +150,27 @@ def _get_tank_level_range(
     - Custom size with height set to 0 (user opted out).
     - A preset tank size is selected but medium type is not propane.
 
-    Preset sizes use TANK_SIZE_RANGES, which stores the mm values that the
-    mopeka_iot_ble library reports when configured for PROPANE.  Other media
-    use different acoustic coefficients and produce different mm readings for
-    the same physical fill level, so these ranges only apply to propane.
-    Legacy entries without CONF_MEDIUM_TYPE default to propane.
+    The medium type selected in CONF_MEDIUM_TYPE (step 1 of setup) determines
+    which acoustic coefficients mopeka_iot_ble applies when converting raw BLE
+    data to mm.  This function enforces that constraint:
 
-    The Custom option is medium-agnostic: the user enters the physical tank
-    height and the library's mm output (using whatever medium coefficients are
-    configured) is compared directly against that height.
+    Propane + preset  → TANK_SIZE_RANGES (propane coefficients, preset geometry).
+    Propane + Custom  → user-supplied height as full level (propane coefficients
+                        only — no other medium is permitted on this path).
+    Other medium + Custom → user-supplied height as full level (that medium's
+                        coefficients are applied by the library per CONF_MEDIUM_TYPE).
+    Other medium + preset → not permitted; preset ranges are propane-specific.
+
+    Legacy entries without CONF_MEDIUM_TYPE default to propane.
     """
     tank_size = entry_data.get(CONF_TANK_SIZE)
     if tank_size is None:
         return None
+    medium_type = entry_data.get(CONF_MEDIUM_TYPE, DEFAULT_MEDIUM_TYPE)
     if tank_size == TankSize.CUSTOM:
         height = entry_data.get(CONF_CUSTOM_TANK_HEIGHT, DEFAULT_CUSTOM_TANK_HEIGHT)
         return (0, height, False) if height > 0 else None
     # Preset ranges are calibrated for propane coefficients only.
-    medium_type = entry_data.get(CONF_MEDIUM_TYPE, DEFAULT_MEDIUM_TYPE)
     if medium_type != DEFAULT_MEDIUM_TYPE:
         return None
     tank_range = TANK_SIZE_RANGES.get(tank_size)
