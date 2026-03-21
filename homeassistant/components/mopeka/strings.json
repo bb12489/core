@@ -24,6 +24,15 @@
         },
         "title": "Custom tank height"
       },
+      "ibc_tank_config": {
+        "data": {
+          "tank_size": "Tank size"
+        },
+        "data_description": {
+          "tank_size": "Select a preset IBC tote tank size. Choose 'Custom' to enter the tank height manually."
+        },
+        "title": "IBC tote tank configuration"
+      },
       "reconfigure": {
         "data": {
           "medium_type": "[%key:component::mopeka::config::step::user::data::medium_type%]"
@@ -38,6 +47,15 @@
           "custom_tank_height": "[%key:component::mopeka::config::step::custom_height::data_description::custom_tank_height%]"
         },
         "title": "[%key:component::mopeka::config::step::custom_height::title%]"
+      },
+      "reconfigure_ibc_tank_config": {
+        "data": {
+          "tank_size": "[%key:component::mopeka::config::step::ibc_tank_config::data::tank_size%]"
+        },
+        "data_description": {
+          "tank_size": "[%key:component::mopeka::config::step::ibc_tank_config::data_description::tank_size%]"
+        },
+        "title": "[%key:component::mopeka::config::step::ibc_tank_config::title%]"
       },
       "reconfigure_tank_config": {
         "data": {
@@ -118,6 +136,15 @@
         },
         "title": "[%key:component::mopeka::config::step::custom_height::title%]"
       },
+      "ibc_tank_config": {
+        "data": {
+          "tank_size": "[%key:component::mopeka::config::step::ibc_tank_config::data::tank_size%]"
+        },
+        "data_description": {
+          "tank_size": "[%key:component::mopeka::config::step::ibc_tank_config::data_description::tank_size%]"
+        },
+        "title": "[%key:component::mopeka::config::step::ibc_tank_config::title%]"
+      },
       "init": {
         "data": {
           "medium_type": "[%key:component::mopeka::config::step::user::data::medium_type%]"
@@ -136,6 +163,13 @@
     }
   },
   "selector": {
+    "ibc_tank_size": {
+      "options": {
+        "ibc_275gal": "275 gal IBC tote (38.5 in / 98 cm)",
+        "ibc_330gal": "330 gal IBC tote (46 in / 114 cm)",
+        "custom": "Custom"
+      }
+    },
     "tank_size": {
       "options": {
         "12_2gal_rv_h": "12.2 gal / 50 lb (RV horizontal ASME)",

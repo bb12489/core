@@ -42,6 +42,7 @@ from .const import (
     DEFAULT_CUSTOM_TANK_HEIGHT,
     DEFAULT_MEDIUM_TYPE,
     HORIZONTAL_TANK_SIZES,
+    IBC_TANK_SIZE_RANGES,
     TANK_SIZE_RANGES,
     TankSize,
 )
@@ -149,22 +150,25 @@ def _get_tank_level_range(
     Returns None when no percentage sensor should be shown:
     - No tank size configured (legacy/unconfigured entries).
     - Custom size with height set to 0 (user opted out).
-    - A preset tank size is selected but medium type is not propane.
+    - A propane-only preset is selected with a non-propane medium type.
 
     The medium type selected in CONF_MEDIUM_TYPE (step 1 of setup) determines
     which acoustic coefficients mopeka_iot_ble applies when converting raw BLE
     data to mm.  This function enforces that constraint:
 
-    Propane + preset  → TANK_SIZE_RANGES (propane coefficients, preset geometry).
+    Propane + propane preset  → TANK_SIZE_RANGES (propane coefficients, preset geometry).
     Propane + Custom  → user-supplied height as full level (propane coefficients
                         only — no other medium is permitted on this path).
+    Any medium + IBC preset → IBC_TANK_SIZE_RANGES (medium's own acoustic coefficients,
+                        vertical geometry).  Supports both bottom-mount and top-mount.
     Other medium + Custom → user-supplied height as full level (that medium's
                         coefficients are applied by the library per CONF_MEDIUM_TYPE).
-    Other medium + preset → not permitted; preset ranges are propane-specific.
+    Other medium + propane preset → not permitted; propane ranges are propane-specific.
 
     Top-mount (TD40/TD200) + Custom → inverted range: the sensor measures the
                         decreasing air gap above the liquid surface, so
                         (empty_mm=height, full_mm=0.0) inverts the fill formula.
+    Top-mount + IBC preset → inverted range using preset height.
 
     Legacy entries without CONF_MEDIUM_TYPE default to propane.
     """
@@ -181,7 +185,16 @@ def _get_tank_level_range(
             # empty/full so the standard formula produces the correct fill %.
             return (float(height), 0.0, False)
         return (0.0, float(height), False)
-    # Preset ranges are calibrated for propane coefficients only.
+    # IBC tote presets are valid for any non-propane medium (bottom-mount and
+    # top-mount sensors).  Top-mount inversion: swap empty/full so the standard
+    # formula produces increasing fill % as the air gap shrinks.
+    ibc_range = IBC_TANK_SIZE_RANGES.get(tank_size)
+    if ibc_range is not None:
+        empty_mm, full_mm = ibc_range
+        if entry_data.get(CONF_TOP_MOUNT, False):
+            return (full_mm, 0.0, False)
+        return (empty_mm, full_mm, False)
+    # Propane presets are calibrated for propane coefficients only.
     if medium_type != DEFAULT_MEDIUM_TYPE:
         return None
     tank_range = TANK_SIZE_RANGES.get(tank_size)

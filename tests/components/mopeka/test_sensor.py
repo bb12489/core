@@ -9,6 +9,8 @@ from homeassistant.components.mopeka.const import (
     CONF_TOP_MOUNT,
     DOMAIN,
     HORIZONTAL_TANK_SIZES,
+    IBC_TANK_SIZE_RANGES,
+    TANK_EMPTY_MM,
     TANK_SIZE_RANGES,
     MediumType,
     TankSize,
@@ -934,6 +936,202 @@ async def test_sensors_top_mount_full_tank(hass: HomeAssistant) -> None:
     fill_sensor = hass.states.get("sensor.td40_td200_7510_tank_fill")
     assert fill_sensor is not None
     assert float(fill_sensor.state) == 100.0
+
+    assert await hass.config_entries.async_unload(entry.entry_id)
+    await hass.async_block_till_done()
+
+
+# ---------------------------------------------------------------------------
+# IBC tote preset sensor tests
+# ---------------------------------------------------------------------------
+
+# For fresh water + PRO_GOOD_SIGNAL_SERVICE_INFO the library yields 711 mm.
+_FRESH_WATER_LEVEL_MM = 711
+
+
+async def test_sensors_ibc_275_bottom_mount(hass: HomeAssistant) -> None:
+    """Test fill % for a 275 gal IBC tote with a bottom-mount sensor (fresh water).
+
+    empty=38.1 mm, full=980.0 mm; level=711 mm.
+    Expected: (711 - 38.1) / (980.0 - 38.1) * 100 = 71.4%.
+    """
+    empty_mm, full_mm = IBC_TANK_SIZE_RANGES[TankSize.IBC_275]
+    expected_pct = round(
+        (_FRESH_WATER_LEVEL_MM - empty_mm) / (full_mm - empty_mm) * 100, 1
+    )
+
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        unique_id="aa:bb:cc:dd:ee:ff",
+        data={
+            CONF_MEDIUM_TYPE: MediumType.FRESH_WATER.value,
+            CONF_TANK_SIZE: TankSize.IBC_275,
+            CONF_CUSTOM_TANK_HEIGHT: 0,
+        },
+    )
+    entry.add_to_hass(hass)
+
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    inject_bluetooth_service_info(hass, PRO_GOOD_SIGNAL_SERVICE_INFO)
+    await hass.async_block_till_done()
+    # 4 base + medium_type + tank_fill = 6 sensors
+    assert len(hass.states.async_all("sensor")) == 6
+
+    pct_sensor = hass.states.get("sensor.pro_plus_eeff_tank_fill")
+    assert pct_sensor is not None
+    assert float(pct_sensor.state) == expected_pct
+
+    assert await hass.config_entries.async_unload(entry.entry_id)
+    await hass.async_block_till_done()
+
+
+async def test_sensors_ibc_330_bottom_mount(hass: HomeAssistant) -> None:
+    """Test fill % for a 330 gal IBC tote with a bottom-mount sensor (fresh water).
+
+    empty=38.1 mm, full=1140.0 mm; level=711 mm.
+    Expected: (711 - 38.1) / (1140.0 - 38.1) * 100 ≈ 61.1%.
+    """
+    empty_mm, full_mm = IBC_TANK_SIZE_RANGES[TankSize.IBC_330]
+    expected_pct = round(
+        (_FRESH_WATER_LEVEL_MM - empty_mm) / (full_mm - empty_mm) * 100, 1
+    )
+
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        unique_id="aa:bb:cc:dd:ee:ff",
+        data={
+            CONF_MEDIUM_TYPE: MediumType.FRESH_WATER.value,
+            CONF_TANK_SIZE: TankSize.IBC_330,
+            CONF_CUSTOM_TANK_HEIGHT: 0,
+        },
+    )
+    entry.add_to_hass(hass)
+
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    inject_bluetooth_service_info(hass, PRO_GOOD_SIGNAL_SERVICE_INFO)
+    await hass.async_block_till_done()
+
+    pct_sensor = hass.states.get("sensor.pro_plus_eeff_tank_fill")
+    assert pct_sensor is not None
+    assert float(pct_sensor.state) == expected_pct
+
+    assert await hass.config_entries.async_unload(entry.entry_id)
+    await hass.async_block_till_done()
+
+
+async def test_sensors_ibc_275_top_mount(hass: HomeAssistant) -> None:
+    """Test fill % inversion for a 275 gal IBC tote with a top-mount sensor.
+
+    Inverted range: empty_mm=980.0, full_mm=0.0.
+    Air gap reading = 165 mm (TD_GOOD_SIGNAL_SERVICE_INFO).
+    Expected: (165 - 980.0) / (0.0 - 980.0) * 100 = 83.2%.
+    """
+    _, full_mm = IBC_TANK_SIZE_RANGES[TankSize.IBC_275]
+    expected_pct = round(
+        (_TD_GOOD_SIGNAL_AIR_GAP_MM - full_mm) / (0.0 - full_mm) * 100, 1
+    )
+
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        unique_id="aa:bb:cc:dd:75:10",
+        data={
+            CONF_MEDIUM_TYPE: MediumType.AIR.value,
+            CONF_TANK_SIZE: TankSize.IBC_275,
+            CONF_CUSTOM_TANK_HEIGHT: 0,
+            CONF_TOP_MOUNT: True,
+        },
+    )
+    entry.add_to_hass(hass)
+
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    inject_bluetooth_service_info(hass, TD_GOOD_SIGNAL_SERVICE_INFO)
+    await hass.async_block_till_done()
+
+    fill_sensor = hass.states.get("sensor.td40_td200_7510_tank_fill")
+    assert fill_sensor is not None
+    assert float(fill_sensor.state) == expected_pct
+
+    assert await hass.config_entries.async_unload(entry.entry_id)
+    await hass.async_block_till_done()
+
+
+async def test_sensors_ibc_330_top_mount(hass: HomeAssistant) -> None:
+    """Test fill % inversion for a 330 gal IBC tote with a top-mount sensor.
+
+    Inverted range: empty_mm=1140.0, full_mm=0.0.
+    Air gap reading = 165 mm (TD_GOOD_SIGNAL_SERVICE_INFO).
+    Expected: (165 - 1140.0) / (0.0 - 1140.0) * 100 = 85.5%.
+    """
+    _, full_mm = IBC_TANK_SIZE_RANGES[TankSize.IBC_330]
+    expected_pct = round(
+        (_TD_GOOD_SIGNAL_AIR_GAP_MM - full_mm) / (0.0 - full_mm) * 100, 1
+    )
+
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        unique_id="aa:bb:cc:dd:75:10",
+        data={
+            CONF_MEDIUM_TYPE: MediumType.AIR.value,
+            CONF_TANK_SIZE: TankSize.IBC_330,
+            CONF_CUSTOM_TANK_HEIGHT: 0,
+            CONF_TOP_MOUNT: True,
+        },
+    )
+    entry.add_to_hass(hass)
+
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    inject_bluetooth_service_info(hass, TD_GOOD_SIGNAL_SERVICE_INFO)
+    await hass.async_block_till_done()
+
+    fill_sensor = hass.states.get("sensor.td40_td200_7510_tank_fill")
+    assert fill_sensor is not None
+    assert float(fill_sensor.state) == expected_pct
+
+    assert await hass.config_entries.async_unload(entry.entry_id)
+    await hass.async_block_till_done()
+
+
+async def test_sensors_ibc_preset_not_used_for_propane(hass: HomeAssistant) -> None:
+    """Test that IBC presets work independently of propane acoustic coefficients.
+
+    An IBC tote selected with a propane medium type should still produce a fill %
+    using the IBC dimensions (since IBC ranges are checked before the propane guard).
+    In practice the UI prevents propane + IBC, but the sensor layer should handle it.
+    """
+    _, full_mm = IBC_TANK_SIZE_RANGES[TankSize.IBC_275]
+    # Propane + PRO_GOOD_SIGNAL → level = 341 mm
+    expected_pct = round(
+        (_GOOD_SIGNAL_LEVEL_MM - TANK_EMPTY_MM) / (full_mm - TANK_EMPTY_MM) * 100, 1
+    )
+
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        unique_id="aa:bb:cc:dd:ee:ff",
+        data={
+            CONF_MEDIUM_TYPE: MediumType.PROPANE.value,
+            CONF_TANK_SIZE: TankSize.IBC_275,
+            CONF_CUSTOM_TANK_HEIGHT: 0,
+        },
+    )
+    entry.add_to_hass(hass)
+
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    inject_bluetooth_service_info(hass, PRO_GOOD_SIGNAL_SERVICE_INFO)
+    await hass.async_block_till_done()
+
+    pct_sensor = hass.states.get("sensor.pro_plus_eeff_tank_fill")
+    assert pct_sensor is not None
+    assert float(pct_sensor.state) == expected_pct
 
     assert await hass.config_entries.async_unload(entry.entry_id)
     await hass.async_block_till_done()

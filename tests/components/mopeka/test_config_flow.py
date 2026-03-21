@@ -100,8 +100,10 @@ async def test_async_step_bluetooth_valid_device_custom_tank(
     assert result4["result"].unique_id == "aa:bb:cc:dd:ee:ff"
 
 
-async def test_async_step_bluetooth_non_propane(hass: HomeAssistant) -> None:
-    """Test BT discovery with a non-propane medium — goes straight to custom height."""
+async def test_async_step_bluetooth_non_propane_ibc_preset(
+    hass: HomeAssistant,
+) -> None:
+    """Test BT discovery with a non-propane medium — shows IBC preset menu."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN,
         context={"source": config_entries.SOURCE_BLUETOOTH},
@@ -110,24 +112,62 @@ async def test_async_step_bluetooth_non_propane(hass: HomeAssistant) -> None:
     assert result["type"] is FlowResultType.FORM
     assert result["step_id"] == "bluetooth_confirm"
 
-    # Step 1: non-propane medium
+    # Step 1: non-propane medium → IBC preset menu
     result2 = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         user_input={CONF_MEDIUM_TYPE: MediumType.FRESH_WATER.value},
     )
     assert result2["type"] is FlowResultType.FORM
-    assert result2["step_id"] == "custom_height"
+    assert result2["step_id"] == "ibc_tank_config"
 
-    # Step 2: enter custom height
+    # Step 2: select IBC 275 gal preset
     with patch("homeassistant.components.mopeka.async_setup_entry", return_value=True):
         result3 = await hass.config_entries.flow.async_configure(
             result["flow_id"],
-            user_input={CONF_CUSTOM_TANK_HEIGHT: 600},
+            user_input={CONF_TANK_SIZE: TankSize.IBC_275},
         )
     assert result3["type"] is FlowResultType.CREATE_ENTRY
     assert result3["data"][CONF_MEDIUM_TYPE] == MediumType.FRESH_WATER.value
-    assert result3["data"][CONF_TANK_SIZE] == TankSize.CUSTOM
-    assert result3["data"][CONF_CUSTOM_TANK_HEIGHT] == 600
+    assert result3["data"][CONF_TANK_SIZE] == TankSize.IBC_275
+    assert result3["data"][CONF_CUSTOM_TANK_HEIGHT] == 0
+
+
+async def test_async_step_bluetooth_non_propane(hass: HomeAssistant) -> None:
+    """Test BT discovery with non-propane medium selecting Custom from IBC menu."""
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN,
+        context={"source": config_entries.SOURCE_BLUETOOTH},
+        data=PRO_SERVICE_INFO,
+    )
+    assert result["type"] is FlowResultType.FORM
+    assert result["step_id"] == "bluetooth_confirm"
+
+    # Step 1: non-propane medium → IBC preset menu
+    result2 = await hass.config_entries.flow.async_configure(
+        result["flow_id"],
+        user_input={CONF_MEDIUM_TYPE: MediumType.FRESH_WATER.value},
+    )
+    assert result2["type"] is FlowResultType.FORM
+    assert result2["step_id"] == "ibc_tank_config"
+
+    # Step 2: select Custom → custom height form
+    result3 = await hass.config_entries.flow.async_configure(
+        result["flow_id"],
+        user_input={CONF_TANK_SIZE: TankSize.CUSTOM},
+    )
+    assert result3["type"] is FlowResultType.FORM
+    assert result3["step_id"] == "custom_height"
+
+    # Step 3: enter custom height
+    with patch("homeassistant.components.mopeka.async_setup_entry", return_value=True):
+        result4 = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            user_input={CONF_CUSTOM_TANK_HEIGHT: 600},
+        )
+    assert result4["type"] is FlowResultType.CREATE_ENTRY
+    assert result4["data"][CONF_MEDIUM_TYPE] == MediumType.FRESH_WATER.value
+    assert result4["data"][CONF_TANK_SIZE] == TankSize.CUSTOM
+    assert result4["data"][CONF_CUSTOM_TANK_HEIGHT] == 600
 
 
 async def test_async_step_bluetooth_not_mopeka(hass: HomeAssistant) -> None:
@@ -194,7 +234,7 @@ async def test_async_step_user_with_found_devices(hass: HomeAssistant) -> None:
 
 
 async def test_async_step_user_non_propane(hass: HomeAssistant) -> None:
-    """Test user flow with a non-propane medium — goes straight to custom height."""
+    """Test user flow with non-propane medium — shows IBC preset menu."""
     with patch(
         "homeassistant.components.mopeka.config_flow.async_discovered_service_info",
         return_value=[PRO_SERVICE_INFO],
@@ -205,7 +245,7 @@ async def test_async_step_user_non_propane(hass: HomeAssistant) -> None:
         )
     assert result["type"] is FlowResultType.FORM
 
-    # Step 1: diesel (non-propane)
+    # Step 1: diesel (non-propane) → IBC preset menu
     result2 = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         user_input={
@@ -214,18 +254,61 @@ async def test_async_step_user_non_propane(hass: HomeAssistant) -> None:
         },
     )
     assert result2["type"] is FlowResultType.FORM
-    assert result2["step_id"] == "custom_height"
+    assert result2["step_id"] == "ibc_tank_config"
 
-    # Step 2: enter custom height
+    # Step 2: select Custom → custom height form
+    result3 = await hass.config_entries.flow.async_configure(
+        result["flow_id"],
+        user_input={CONF_TANK_SIZE: TankSize.CUSTOM},
+    )
+    assert result3["type"] is FlowResultType.FORM
+    assert result3["step_id"] == "custom_height"
+
+    # Step 3: enter custom height
     with patch("homeassistant.components.mopeka.async_setup_entry", return_value=True):
-        result3 = await hass.config_entries.flow.async_configure(
+        result4 = await hass.config_entries.flow.async_configure(
             result["flow_id"],
             user_input={CONF_CUSTOM_TANK_HEIGHT: 600},
         )
+    assert result4["type"] is FlowResultType.CREATE_ENTRY
+    assert result4["data"][CONF_MEDIUM_TYPE] == MediumType.DIESEL.value
+    assert result4["data"][CONF_TANK_SIZE] == TankSize.CUSTOM
+    assert result4["data"][CONF_CUSTOM_TANK_HEIGHT] == 600
+
+
+async def test_async_step_user_non_propane_ibc_preset(hass: HomeAssistant) -> None:
+    """Test user flow with non-propane medium selecting an IBC tote preset."""
+    with patch(
+        "homeassistant.components.mopeka.config_flow.async_discovered_service_info",
+        return_value=[PRO_SERVICE_INFO],
+    ):
+        result = await hass.config_entries.flow.async_init(
+            DOMAIN,
+            context={"source": config_entries.SOURCE_USER},
+        )
+    assert result["type"] is FlowResultType.FORM
+
+    # Step 1: fresh water → IBC preset menu
+    result2 = await hass.config_entries.flow.async_configure(
+        result["flow_id"],
+        user_input={
+            "address": "aa:bb:cc:dd:ee:ff",
+            CONF_MEDIUM_TYPE: MediumType.FRESH_WATER.value,
+        },
+    )
+    assert result2["type"] is FlowResultType.FORM
+    assert result2["step_id"] == "ibc_tank_config"
+
+    # Step 2: select IBC 330 gal preset
+    with patch("homeassistant.components.mopeka.async_setup_entry", return_value=True):
+        result3 = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            user_input={CONF_TANK_SIZE: TankSize.IBC_330},
+        )
     assert result3["type"] is FlowResultType.CREATE_ENTRY
-    assert result3["data"][CONF_MEDIUM_TYPE] == MediumType.DIESEL.value
-    assert result3["data"][CONF_TANK_SIZE] == TankSize.CUSTOM
-    assert result3["data"][CONF_CUSTOM_TANK_HEIGHT] == 600
+    assert result3["data"][CONF_MEDIUM_TYPE] == MediumType.FRESH_WATER.value
+    assert result3["data"][CONF_TANK_SIZE] == TankSize.IBC_330
+    assert result3["data"][CONF_CUSTOM_TANK_HEIGHT] == 0
 
 
 async def test_async_step_user_replace_ignored(hass: HomeAssistant) -> None:
@@ -450,20 +533,28 @@ async def test_async_step_reconfigure_options(hass: HomeAssistant) -> None:
     )
     assert medium_type_key.default() == MediumType.AIR.value
 
-    # Step 1: switch to fresh water (non-propane)
+    # Step 1: switch to fresh water (non-propane) → IBC preset menu
     result2 = await hass.config_entries.options.async_configure(
         result["flow_id"],
         user_input={CONF_MEDIUM_TYPE: MediumType.FRESH_WATER.value},
     )
     assert result2["type"] is FlowResultType.FORM
-    assert result2["step_id"] == "custom_height"
+    assert result2["step_id"] == "ibc_tank_config"
 
-    # Step 2: enter custom height
+    # Step 2: select Custom → custom height form
     result3 = await hass.config_entries.options.async_configure(
+        result["flow_id"],
+        user_input={CONF_TANK_SIZE: TankSize.CUSTOM},
+    )
+    assert result3["type"] is FlowResultType.FORM
+    assert result3["step_id"] == "custom_height"
+
+    # Step 3: enter custom height
+    result4 = await hass.config_entries.options.async_configure(
         result["flow_id"],
         user_input={CONF_CUSTOM_TANK_HEIGHT: 400},
     )
-    assert result3["type"] is FlowResultType.CREATE_ENTRY
+    assert result4["type"] is FlowResultType.CREATE_ENTRY
 
     assert entry.data[CONF_MEDIUM_TYPE] == MediumType.FRESH_WATER.value
     assert entry.data[CONF_TANK_SIZE] == TankSize.CUSTOM
@@ -660,7 +751,7 @@ async def test_reconfigure_flow_propane_custom(hass: HomeAssistant) -> None:
 
 
 async def test_reconfigure_flow_non_propane(hass: HomeAssistant) -> None:
-    """Test reconfigure flow switching to a non-propane medium — custom height page."""
+    """Test reconfigure flow switching to non-propane — IBC preset menu shown."""
     entry = MockConfigEntry(
         domain=DOMAIN,
         unique_id="aa:bb:cc:dd:ee:ff",
@@ -680,26 +771,75 @@ async def test_reconfigure_flow_non_propane(hass: HomeAssistant) -> None:
         assert result["type"] is FlowResultType.FORM
         assert result["step_id"] == "reconfigure"
 
-        # Step 1: switch to fresh water
+        # Step 1: switch to fresh water → IBC preset menu
         result2 = await hass.config_entries.flow.async_configure(
             result["flow_id"],
             user_input={CONF_MEDIUM_TYPE: MediumType.FRESH_WATER.value},
         )
         assert result2["type"] is FlowResultType.FORM
-        assert result2["step_id"] == "reconfigure_custom_height"
+        assert result2["step_id"] == "reconfigure_ibc_tank_config"
 
-        # Step 2: enter custom height
+        # Step 2: select Custom → custom height form
         result3 = await hass.config_entries.flow.async_configure(
             result["flow_id"],
+            user_input={CONF_TANK_SIZE: TankSize.CUSTOM},
+        )
+        assert result3["type"] is FlowResultType.FORM
+        assert result3["step_id"] == "reconfigure_custom_height"
+
+        # Step 3: enter custom height
+        result4 = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
             user_input={CONF_CUSTOM_TANK_HEIGHT: 350},
+        )
+        await hass.async_block_till_done()
+
+    assert result4["type"] is FlowResultType.ABORT
+    assert result4["reason"] == "reconfigure_successful"
+    assert entry.data[CONF_MEDIUM_TYPE] == MediumType.FRESH_WATER.value
+    assert entry.data[CONF_TANK_SIZE] == TankSize.CUSTOM
+    assert entry.data[CONF_CUSTOM_TANK_HEIGHT] == 350
+
+
+async def test_reconfigure_flow_non_propane_ibc_preset(hass: HomeAssistant) -> None:
+    """Test reconfigure flow switching to non-propane with IBC tote preset."""
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        unique_id="aa:bb:cc:dd:ee:ff",
+        data={
+            CONF_MEDIUM_TYPE: MediumType.PROPANE.value,
+            CONF_TANK_SIZE: TankSize.LB_20,
+            CONF_CUSTOM_TANK_HEIGHT: 0,
+        },
+    )
+    entry.add_to_hass(hass)
+
+    with patch("homeassistant.components.mopeka.async_setup_entry", return_value=True):
+        await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+
+        result = await entry.start_reconfigure_flow(hass)
+        assert result["step_id"] == "reconfigure"
+
+        # Step 1: switch to fresh water → IBC preset menu
+        result2 = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            user_input={CONF_MEDIUM_TYPE: MediumType.FRESH_WATER.value},
+        )
+        assert result2["step_id"] == "reconfigure_ibc_tank_config"
+
+        # Step 2: select 275 gal IBC preset
+        result3 = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            user_input={CONF_TANK_SIZE: TankSize.IBC_275},
         )
         await hass.async_block_till_done()
 
     assert result3["type"] is FlowResultType.ABORT
     assert result3["reason"] == "reconfigure_successful"
     assert entry.data[CONF_MEDIUM_TYPE] == MediumType.FRESH_WATER.value
-    assert entry.data[CONF_TANK_SIZE] == TankSize.CUSTOM
-    assert entry.data[CONF_CUSTOM_TANK_HEIGHT] == 350
+    assert entry.data[CONF_TANK_SIZE] == TankSize.IBC_275
+    assert entry.data[CONF_CUSTOM_TANK_HEIGHT] == 0
 
 
 # ---------------------------------------------------------------------------
@@ -710,32 +850,66 @@ async def test_reconfigure_flow_non_propane(hass: HomeAssistant) -> None:
 async def test_async_step_bluetooth_td40_td200_auto_detected(
     hass: HomeAssistant,
 ) -> None:
-    """Test BT discovery of a TD40/TD200 auto-sets AIR and skips medium type form."""
+    """Test BT discovery of a TD40/TD200 auto-sets AIR and shows IBC preset menu."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN,
         context={"source": config_entries.SOURCE_BLUETOOTH},
         data=TD_SERVICE_INFO,
     )
-    # Must jump straight to custom_height — no medium type form shown.
+    # Must jump straight to ibc_tank_config — no medium type form shown.
     assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "custom_height"
+    assert result["step_id"] == "ibc_tank_config"
+
+    # Select Custom → custom height form
+    result2 = await hass.config_entries.flow.async_configure(
+        result["flow_id"],
+        user_input={CONF_TANK_SIZE: TankSize.CUSTOM},
+    )
+    assert result2["type"] is FlowResultType.FORM
+    assert result2["step_id"] == "custom_height"
 
     # Enter tank height
     with patch("homeassistant.components.mopeka.async_setup_entry", return_value=True):
-        result2 = await hass.config_entries.flow.async_configure(
+        result3 = await hass.config_entries.flow.async_configure(
             result["flow_id"],
             user_input={CONF_CUSTOM_TANK_HEIGHT: 400},
         )
+    assert result3["type"] is FlowResultType.CREATE_ENTRY
+    assert result3["data"][CONF_MEDIUM_TYPE] == MediumType.AIR.value
+    assert result3["data"][CONF_TANK_SIZE] == TankSize.CUSTOM
+    assert result3["data"][CONF_CUSTOM_TANK_HEIGHT] == 400
+    assert result3["data"][CONF_TOP_MOUNT] is True
+    assert result3["result"].unique_id == "aa:bb:cc:dd:75:10"
+
+
+async def test_async_step_bluetooth_td40_td200_ibc_preset(
+    hass: HomeAssistant,
+) -> None:
+    """Test BT discovery of a TD40/TD200 selecting an IBC tote preset."""
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN,
+        context={"source": config_entries.SOURCE_BLUETOOTH},
+        data=TD_SERVICE_INFO,
+    )
+    assert result["type"] is FlowResultType.FORM
+    assert result["step_id"] == "ibc_tank_config"
+
+    # Select IBC 330 gal preset
+    with patch("homeassistant.components.mopeka.async_setup_entry", return_value=True):
+        result2 = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            user_input={CONF_TANK_SIZE: TankSize.IBC_330},
+        )
     assert result2["type"] is FlowResultType.CREATE_ENTRY
     assert result2["data"][CONF_MEDIUM_TYPE] == MediumType.AIR.value
-    assert result2["data"][CONF_TANK_SIZE] == TankSize.CUSTOM
-    assert result2["data"][CONF_CUSTOM_TANK_HEIGHT] == 400
+    assert result2["data"][CONF_TANK_SIZE] == TankSize.IBC_330
+    assert result2["data"][CONF_CUSTOM_TANK_HEIGHT] == 0
     assert result2["data"][CONF_TOP_MOUNT] is True
     assert result2["result"].unique_id == "aa:bb:cc:dd:75:10"
 
 
 async def test_async_step_user_td40_td200_auto_detected(hass: HomeAssistant) -> None:
-    """Test user flow for TD40/TD200 overrides medium type to AIR."""
+    """Test user flow for TD40/TD200 overrides medium type to AIR, shows IBC menu."""
     with patch(
         "homeassistant.components.mopeka.config_flow.async_discovered_service_info",
         return_value=[TD_SERVICE_INFO],
@@ -755,25 +929,33 @@ async def test_async_step_user_td40_td200_auto_detected(hass: HomeAssistant) -> 
             CONF_MEDIUM_TYPE: MediumType.DIESEL.value,
         },
     )
-    # Goes straight to custom_height, not tank_config or custom_height for diesel
+    # Goes to ibc_tank_config with medium overridden to AIR
     assert result2["type"] is FlowResultType.FORM
-    assert result2["step_id"] == "custom_height"
+    assert result2["step_id"] == "ibc_tank_config"
+
+    # Select Custom → custom height form
+    result3 = await hass.config_entries.flow.async_configure(
+        result["flow_id"],
+        user_input={CONF_TANK_SIZE: TankSize.CUSTOM},
+    )
+    assert result3["type"] is FlowResultType.FORM
+    assert result3["step_id"] == "custom_height"
 
     with patch("homeassistant.components.mopeka.async_setup_entry", return_value=True):
-        result3 = await hass.config_entries.flow.async_configure(
+        result4 = await hass.config_entries.flow.async_configure(
             result["flow_id"],
             user_input={CONF_CUSTOM_TANK_HEIGHT: 350},
         )
-    assert result3["type"] is FlowResultType.CREATE_ENTRY
-    assert result3["data"][CONF_MEDIUM_TYPE] == MediumType.AIR.value
-    assert result3["data"][CONF_TOP_MOUNT] is True
-    assert result3["result"].unique_id == "aa:bb:cc:dd:75:10"
+    assert result4["type"] is FlowResultType.CREATE_ENTRY
+    assert result4["data"][CONF_MEDIUM_TYPE] == MediumType.AIR.value
+    assert result4["data"][CONF_TOP_MOUNT] is True
+    assert result4["result"].unique_id == "aa:bb:cc:dd:75:10"
 
 
 async def test_reconfigure_td40_td200_skips_medium_type_step(
     hass: HomeAssistant,
 ) -> None:
-    """Test reconfigure for a top-mount entry goes straight to custom height."""
+    """Test reconfigure for a top-mount entry goes straight to IBC preset menu."""
     entry = MockConfigEntry(
         domain=DOMAIN,
         unique_id="aa:bb:cc:dd:75:10",
@@ -792,25 +974,33 @@ async def test_reconfigure_td40_td200_skips_medium_type_step(
         await hass.async_block_till_done()
 
         result = await entry.start_reconfigure_flow(hass)
-        # Must skip the reconfigure (medium type) step and go to custom height directly.
+        # Must skip the reconfigure (medium type) step and go to IBC menu directly.
         assert result["type"] is FlowResultType.FORM
-        assert result["step_id"] == "reconfigure_custom_height"
+        assert result["step_id"] == "reconfigure_ibc_tank_config"
 
+        # Select Custom → custom height form
         result2 = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            user_input={CONF_TANK_SIZE: TankSize.CUSTOM},
+        )
+        assert result2["type"] is FlowResultType.FORM
+        assert result2["step_id"] == "reconfigure_custom_height"
+
+        result3 = await hass.config_entries.flow.async_configure(
             result["flow_id"],
             user_input={CONF_CUSTOM_TANK_HEIGHT: 500},
         )
         await hass.async_block_till_done()
 
-    assert result2["type"] is FlowResultType.ABORT
-    assert result2["reason"] == "reconfigure_successful"
+    assert result3["type"] is FlowResultType.ABORT
+    assert result3["reason"] == "reconfigure_successful"
     assert entry.data[CONF_MEDIUM_TYPE] == MediumType.AIR.value
     assert entry.data[CONF_CUSTOM_TANK_HEIGHT] == 500
     assert entry.data[CONF_TOP_MOUNT] is True
 
 
 async def test_options_td40_td200_skips_medium_type_step(hass: HomeAssistant) -> None:
-    """Test options flow for a top-mount entry goes straight to custom height."""
+    """Test options flow for a top-mount entry goes straight to IBC preset menu."""
     entry = MockConfigEntry(
         domain=DOMAIN,
         unique_id="aa:bb:cc:dd:75:10",
@@ -827,16 +1017,58 @@ async def test_options_td40_td200_skips_medium_type_step(hass: HomeAssistant) ->
     await hass.async_block_till_done()
 
     result = await hass.config_entries.options.async_init(entry.entry_id)
-    # Must skip the init (medium type) step and go to custom height directly.
+    # Must skip the init (medium type) step and go to IBC preset menu directly.
     assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "custom_height"
+    assert result["step_id"] == "ibc_tank_config"
 
+    # Select Custom → custom height form
     result2 = await hass.config_entries.options.async_configure(
         result["flow_id"],
+        user_input={CONF_TANK_SIZE: TankSize.CUSTOM},
+    )
+    assert result2["type"] is FlowResultType.FORM
+    assert result2["step_id"] == "custom_height"
+
+    result3 = await hass.config_entries.options.async_configure(
+        result["flow_id"],
         user_input={CONF_CUSTOM_TANK_HEIGHT: 600},
+    )
+    assert result3["type"] is FlowResultType.CREATE_ENTRY
+
+    assert entry.data[CONF_MEDIUM_TYPE] == MediumType.AIR.value
+    assert entry.data[CONF_CUSTOM_TANK_HEIGHT] == 600
+    assert entry.data[CONF_TOP_MOUNT] is True
+
+
+async def test_options_td40_td200_ibc_preset(hass: HomeAssistant) -> None:
+    """Test options flow for a top-mount entry selecting an IBC tote preset."""
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        unique_id="aa:bb:cc:dd:75:10",
+        title="TD40/TD200 7510",
+        data={
+            CONF_MEDIUM_TYPE: MediumType.AIR.value,
+            CONF_TANK_SIZE: TankSize.CUSTOM,
+            CONF_CUSTOM_TANK_HEIGHT: 400,
+            CONF_TOP_MOUNT: True,
+        },
+    )
+    entry.add_to_hass(hass)
+    await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    result = await hass.config_entries.options.async_init(entry.entry_id)
+    assert result["type"] is FlowResultType.FORM
+    assert result["step_id"] == "ibc_tank_config"
+
+    # Select IBC 275 gal preset
+    result2 = await hass.config_entries.options.async_configure(
+        result["flow_id"],
+        user_input={CONF_TANK_SIZE: TankSize.IBC_275},
     )
     assert result2["type"] is FlowResultType.CREATE_ENTRY
 
     assert entry.data[CONF_MEDIUM_TYPE] == MediumType.AIR.value
-    assert entry.data[CONF_CUSTOM_TANK_HEIGHT] == 600
+    assert entry.data[CONF_TANK_SIZE] == TankSize.IBC_275
+    assert entry.data[CONF_CUSTOM_TANK_HEIGHT] == 0
     assert entry.data[CONF_TOP_MOUNT] is True

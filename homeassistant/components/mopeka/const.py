@@ -38,10 +38,17 @@ class TankSize(StrEnum):
     GAL_16_RV_H = "16gal_rv_h"
     GAL_20_3_RV_H = "20_3gal_rv_h"
     GAL_29_3_RV_H = "29_3gal_rv_h"
+    IBC_275 = "ibc_275gal"
+    IBC_330 = "ibc_330gal"
     CUSTOM = "custom"
 
 
 DEFAULT_TANK_SIZE: Final = TankSize.LB_20
+
+# Ordered list of tank sizes shown in the IBC tote preset selector (non-propane media).
+IBC_TANK_SIZES: Final[list[TankSize]] = [TankSize.IBC_275, TankSize.IBC_330, TankSize.CUSTOM]
+
+DEFAULT_IBC_TANK_SIZE: Final = TankSize.IBC_275
 
 # Minimum readable fluid height in mm.  Accounts for the physical curvature at the
 # bottom of the tank and the ultrasonic sensor's dead zone.
@@ -75,6 +82,19 @@ TANK_SIZE_RANGES: Final[dict[str, tuple[float, float]]] = {
     TankSize.GAL_16_RV_H: (TANK_EMPTY_MM, 346.7),
     TankSize.GAL_20_3_RV_H: (TANK_EMPTY_MM, 393.7),
     TankSize.GAL_29_3_RV_H: (TANK_EMPTY_MM, 369.6),
+}
+
+# IBC tote tank dimensions in millimeters for non-propane media (bottom-mount and
+# top-mount sensors).  Internal heights sourced from standard US IBC tote specs:
+#   275 gal: 38.5 in (≈ 98 cm) → 980 mm
+#   330 gal: 46 in   (≈ 114 cm) → 1140 mm
+#
+# For bottom-mount sensors: fill% = (reading - TANK_EMPTY_MM) / (height - TANK_EMPTY_MM)
+# For top-mount sensors: the range is inverted in _get_tank_level_range() because the
+# sensor measures the decreasing air gap above the liquid surface.
+IBC_TANK_SIZE_RANGES: Final[dict[str, tuple[float, float]]] = {
+    TankSize.IBC_275: (TANK_EMPTY_MM, 980.0),
+    TankSize.IBC_330: (TANK_EMPTY_MM, 1140.0),
 }
 
 # Tank sizes that are mounted horizontally.  For these tanks the full_mm value

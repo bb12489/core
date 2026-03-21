@@ -24,9 +24,11 @@ from .const import (
     CONF_TANK_SIZE,
     CONF_TOP_MOUNT,
     DEFAULT_CUSTOM_TANK_HEIGHT,
+    DEFAULT_IBC_TANK_SIZE,
     DEFAULT_MEDIUM_TYPE,
     DEFAULT_TANK_SIZE,
     DOMAIN,
+    IBC_TANK_SIZES,
     MOPEKA_MANUFACTURER_ID,
     MediumType,
     TOP_MOUNT_MODEL_IDS,
@@ -92,6 +94,25 @@ def _async_generate_tank_schema(
                     options=[size.value for size in TankSize],
                     mode=selector.SelectSelectorMode.DROPDOWN,
                     translation_key="tank_size",
+                )
+            ),
+        }
+    )
+
+
+def _async_generate_ibc_tank_schema(
+    tank_size: str | None = None,
+) -> vol.Schema:
+    """Return a schema containing the IBC tote tank preset selector."""
+    return vol.Schema(
+        {
+            vol.Required(
+                CONF_TANK_SIZE, default=tank_size or DEFAULT_IBC_TANK_SIZE
+            ): selector.SelectSelector(
+                selector.SelectSelectorConfig(
+                    options=[size.value for size in IBC_TANK_SIZES],
+                    mode=selector.SelectSelectorMode.DROPDOWN,
+                    translation_key="ibc_tank_size",
                 )
             ),
         }
@@ -167,7 +188,7 @@ class MopekaConfigFlow(ConfigFlow, domain=DOMAIN):
             self._medium_type = MediumType.AIR.value
             self._title = title
             self._discovered_devices[discovery_info.address] = title
-            return await self.async_step_custom_height()
+            return await self.async_step_ibc_tank_config()
 
         if user_input is not None:
             self._medium_type = user_input[CONF_MEDIUM_TYPE]
@@ -175,7 +196,7 @@ class MopekaConfigFlow(ConfigFlow, domain=DOMAIN):
             self._discovered_devices[discovery_info.address] = title
             if self._medium_type == DEFAULT_MEDIUM_TYPE:
                 return await self.async_step_tank_config()
-            return await self.async_step_custom_height()
+            return await self.async_step_ibc_tank_config()
 
         placeholders = {"name": title}
         self.context["title_placeholders"] = placeholders
@@ -219,6 +240,21 @@ class MopekaConfigFlow(ConfigFlow, domain=DOMAIN):
             data_schema=_async_generate_tank_schema(),
         )
 
+    async def async_step_ibc_tank_config(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Select an IBC tote tank preset (non-propane media)."""
+        if user_input is not None:
+            tank_size = user_input.get(CONF_TANK_SIZE, TankSize.CUSTOM)
+            if tank_size == TankSize.CUSTOM:
+                return await self.async_step_custom_height()
+            return await self._async_create_config_entry(tank_size, 0)
+
+        return self.async_show_form(
+            step_id="ibc_tank_config",
+            data_schema=_async_generate_ibc_tank_schema(),
+        )
+
     async def async_step_custom_height(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
@@ -242,13 +278,13 @@ class MopekaConfigFlow(ConfigFlow, domain=DOMAIN):
         # Top-mount sensors have their medium type locked to AIR.
         if entry.data.get(CONF_TOP_MOUNT, False):
             self._medium_type = MediumType.AIR.value
-            return await self.async_step_reconfigure_custom_height()
+            return await self.async_step_reconfigure_ibc_tank_config()
 
         if user_input is not None:
             self._medium_type = user_input[CONF_MEDIUM_TYPE]
             if self._medium_type == DEFAULT_MEDIUM_TYPE:
                 return await self.async_step_reconfigure_tank_config()
-            return await self.async_step_reconfigure_custom_height()
+            return await self.async_step_reconfigure_ibc_tank_config()
 
         return self.async_show_form(
             step_id="reconfigure",
@@ -279,6 +315,34 @@ class MopekaConfigFlow(ConfigFlow, domain=DOMAIN):
         return self.async_show_form(
             step_id="reconfigure_tank_config",
             data_schema=_async_generate_tank_schema(
+                tank_size=existing_tank_size,
+            ),
+        )
+
+    async def async_step_reconfigure_ibc_tank_config(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Handle reconfiguration — select IBC tote tank preset."""
+        entry = self._get_reconfigure_entry()
+        if user_input is not None:
+            tank_size = user_input.get(CONF_TANK_SIZE, TankSize.CUSTOM)
+            if tank_size == TankSize.CUSTOM:
+                return await self.async_step_reconfigure_custom_height()
+            return self.async_update_reload_and_abort(
+                entry,
+                data_updates={
+                    CONF_MEDIUM_TYPE: self._medium_type,
+                    CONF_TANK_SIZE: tank_size,
+                    CONF_CUSTOM_TANK_HEIGHT: 0,
+                },
+            )
+
+        existing_tank_size = entry.data.get(CONF_TANK_SIZE)
+        if existing_tank_size not in IBC_TANK_SIZES:
+            existing_tank_size = DEFAULT_IBC_TANK_SIZE
+        return self.async_show_form(
+            step_id="reconfigure_ibc_tank_config",
+            data_schema=_async_generate_ibc_tank_schema(
                 tank_size=existing_tank_size,
             ),
         )
@@ -323,10 +387,10 @@ class MopekaConfigFlow(ConfigFlow, domain=DOMAIN):
             if service_info is not None and _is_top_mount_sensor(service_info):
                 self._is_top_mount = True
                 self._medium_type = MediumType.AIR.value
-                return await self.async_step_custom_height()
+                return await self.async_step_ibc_tank_config()
             if self._medium_type == DEFAULT_MEDIUM_TYPE:
                 return await self.async_step_tank_config()
-            return await self.async_step_custom_height()
+            return await self.async_step_ibc_tank_config()
 
         current_addresses = self._async_current_ids(include_ignore=False)
         for discovery_info in async_discovered_service_info(self.hass, False):
@@ -368,13 +432,13 @@ class MopekaOptionsFlow(config_entries.OptionsFlow):
         # Top-mount sensors have their medium type locked to AIR.
         if self.config_entry.data.get(CONF_TOP_MOUNT, False):
             self._medium_type = MediumType.AIR.value
-            return await self.async_step_custom_height()
+            return await self.async_step_ibc_tank_config()
 
         if user_input is not None:
             self._medium_type = user_input[CONF_MEDIUM_TYPE]
             if self._medium_type == DEFAULT_MEDIUM_TYPE:
                 return await self.async_step_tank_config()
-            return await self.async_step_custom_height()
+            return await self.async_step_ibc_tank_config()
 
         return self.async_show_form(
             step_id="init",
@@ -410,6 +474,37 @@ class MopekaOptionsFlow(config_entries.OptionsFlow):
         return self.async_show_form(
             step_id="tank_config",
             data_schema=_async_generate_tank_schema(
+                tank_size=existing_tank_size,
+            ),
+        )
+
+    async def async_step_ibc_tank_config(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Select an IBC tote tank preset (non-propane media)."""
+        assert self._medium_type is not None
+        if user_input is not None:
+            tank_size = user_input.get(CONF_TANK_SIZE, TankSize.CUSTOM)
+            if tank_size == TankSize.CUSTOM:
+                return await self.async_step_custom_height()
+            new_data = {
+                **self.config_entry.data,
+                CONF_MEDIUM_TYPE: self._medium_type,
+                CONF_TANK_SIZE: tank_size,
+                CONF_CUSTOM_TANK_HEIGHT: 0,
+            }
+            self.hass.config_entries.async_update_entry(
+                self.config_entry, data=new_data
+            )
+            await self.hass.config_entries.async_reload(self.config_entry.entry_id)
+            return self.async_create_entry(title="", data={})
+
+        existing_tank_size = self.config_entry.data.get(CONF_TANK_SIZE)
+        if existing_tank_size not in IBC_TANK_SIZES:
+            existing_tank_size = DEFAULT_IBC_TANK_SIZE
+        return self.async_show_form(
+            step_id="ibc_tank_config",
+            data_schema=_async_generate_ibc_tank_schema(
                 tank_size=existing_tank_size,
             ),
         )
