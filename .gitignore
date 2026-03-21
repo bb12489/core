@@ -144,3 +144,5 @@ pytest_buckets.txt
 .claude/settings.local.json
 .serena/
 
+homeassistant/components/mopeka/research.md
+homeassistant/components/mopeka/integration_documentation_draft.md
