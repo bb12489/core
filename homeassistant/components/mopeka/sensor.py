@@ -39,6 +39,7 @@ from .const import (
     CONF_MEDIUM_TYPE,
     CONF_TANK_SIZE,
     DEFAULT_CUSTOM_TANK_HEIGHT,
+    DEFAULT_MEDIUM_TYPE,
     HORIZONTAL_TANK_SIZES,
     TANK_SIZE_RANGES,
     TankSize,
@@ -147,14 +148,17 @@ def _get_tank_level_range(
     Returns None when no percentage sensor should be shown:
     - No tank size configured (legacy/unconfigured entries).
     - Custom size with height set to 0 (user opted out).
+    - A preset tank size is selected but medium type is not propane.
 
-    For preset sizes the range comes from TANK_SIZE_RANGES which contains
-    real physical tank dimensions in mm.  The mopeka_iot_ble library already
-    converts raw sensor readings to physical fluid height, so these ranges
-    work correctly for any medium type.
+    Preset sizes use TANK_SIZE_RANGES, which stores the mm values that the
+    mopeka_iot_ble library reports when configured for PROPANE.  Other media
+    use different acoustic coefficients and produce different mm readings for
+    the same physical fill level, so these ranges only apply to propane.
+    Legacy entries without CONF_MEDIUM_TYPE default to propane.
 
-    For Custom the range is (0, user_height, False), matching the Mopeka app's
-    "Arbitrary" behaviour where fill% = reading / entered_height * 100.
+    The Custom option is medium-agnostic: the user enters the physical tank
+    height and the library's mm output (using whatever medium coefficients are
+    configured) is compared directly against that height.
     """
     tank_size = entry_data.get(CONF_TANK_SIZE)
     if tank_size is None:
@@ -162,6 +166,10 @@ def _get_tank_level_range(
     if tank_size == TankSize.CUSTOM:
         height = entry_data.get(CONF_CUSTOM_TANK_HEIGHT, DEFAULT_CUSTOM_TANK_HEIGHT)
         return (0, height, False) if height > 0 else None
+    # Preset ranges are calibrated for propane coefficients only.
+    medium_type = entry_data.get(CONF_MEDIUM_TYPE, DEFAULT_MEDIUM_TYPE)
+    if medium_type != DEFAULT_MEDIUM_TYPE:
+        return None
     tank_range = TANK_SIZE_RANGES.get(tank_size)
     if tank_range is None:
         return None

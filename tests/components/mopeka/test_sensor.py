@@ -649,7 +649,13 @@ async def test_sensors_propane_preset_diagnostic(hass: HomeAssistant) -> None:
 
 
 async def test_sensors_propane_preset_only_for_propane(hass: HomeAssistant) -> None:
-    """Test that the propane preset diagnostic sensor is hidden for non-propane mediums."""
+    """Test that preset tank ranges are not used for non-propane media.
+
+    TANK_SIZE_RANGES values are calibrated against propane acoustic coefficients.
+    When the medium type is not propane the library applies different coefficients,
+    producing mm readings that are incompatible with those ranges.  No fill %
+    sensor should be created in this case.
+    """
     entry = MockConfigEntry(
         domain=DOMAIN,
         unique_id="aa:bb:cc:dd:ee:ff",
@@ -665,8 +671,9 @@ async def test_sensors_propane_preset_only_for_propane(hass: HomeAssistant) -> N
 
     inject_bluetooth_service_info(hass, PRO_GOOD_SIGNAL_SERVICE_INFO)
     await hass.async_block_till_done()
-    # 4 base sensors + tank fill + medium type
-    assert len(hass.states.async_all("sensor")) == 6
+    # 4 base sensors + medium type; no fill % (preset blocked for non-propane)
+    assert len(hass.states.async_all("sensor")) == 5
+    assert hass.states.get("sensor.pro_plus_eeff_tank_fill") is None
     assert hass.states.get("sensor.pro_plus_eeff_propane_preset") is None
 
     assert await hass.config_entries.async_unload(entry.entry_id)

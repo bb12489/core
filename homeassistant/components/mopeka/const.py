@@ -38,17 +38,22 @@ DEFAULT_TANK_SIZE: Final = TankSize.LB_20
 # bottom of the tank and the ultrasonic sensor's dead zone.
 TANK_EMPTY_MM: Final = 38.1
 
-# Physical (empty_mm, full_mm) tank dimensions in millimeters.
-# The mopeka_iot_ble library already converts the raw sensor reading into the
-# physical fluid height in mm by applying a temperature-dependent speed-of-sound
-# polynomial for the configured medium type.  Therefore these ranges are real
-# tank measurements and work correctly regardless of the medium type.
+# Propane-specific (empty_mm, full_mm) tank dimensions in millimeters.
+# The mopeka_iot_ble library converts raw acoustic measurements to physical
+# fluid-height mm using a temperature-dependent speed-of-sound polynomial chosen
+# for the configured medium type.  These preset ranges represent what the library
+# reports when CONF_MEDIUM_TYPE == "propane"; other media use different acoustic
+# coefficients and therefore produce different mm values for the same physical
+# fill level, making these ranges inapplicable.
 #
-# Vertical tank full heights come from standard US DOT propane cylinder liquid
-# column heights.  Horizontal / RV ASME full heights are the inner diameter of
-# the tank (the maximum fluid height when the tank is on its side).
+# Vertical tank full heights are the maximum liquid column heights for standard
+# US DOT propane cylinders.  Horizontal / RV ASME full heights are the inner
+# diameter (the geometric maximum fluid height when the tank is on its side).
 #
-# Fill % = clamp((reading - empty_mm) / (full_mm - empty_mm) * 100, 0, 100).
+# Fill % = clamp((reading - empty_mm) / (full_mm - empty_mm) * 100, 0, 100)
+# (horizontal tanks apply cylindrical cross-section geometry for volume accuracy).
+#
+# Only referenced when CONF_MEDIUM_TYPE == "propane".
 TANK_SIZE_RANGES: Final[dict[str, tuple[float, float]]] = {
     TankSize.LB_20: (TANK_EMPTY_MM, 254.0),
     TankSize.LB_30: (TANK_EMPTY_MM, 381.0),
