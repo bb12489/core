@@ -180,7 +180,7 @@ def _get_tank_level_range(
             # Top-mount: reading decreases as tank fills.  Invert by swapping
             # empty/full so the standard formula produces the correct fill %.
             return (float(height), 0.0, False)
-        return (0, height, False)
+        return (0.0, float(height), False)
     # Preset ranges are calibrated for propane coefficients only.
     if medium_type != DEFAULT_MEDIUM_TYPE:
         return None
