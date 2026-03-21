@@ -6,6 +6,7 @@ from homeassistant.components.mopeka.const import (
     CONF_CUSTOM_TANK_HEIGHT,
     CONF_MEDIUM_TYPE,
     CONF_TANK_SIZE,
+    CONF_TOP_MOUNT,
     DOMAIN,
     HORIZONTAL_TANK_SIZES,
     TANK_SIZE_RANGES,
@@ -27,6 +28,8 @@ from . import (
     PRO_GOOD_SIGNAL_SERVICE_INFO,
     PRO_SERVICE_INFO,
     PRO_UNUSABLE_SIGNAL_SERVICE_INFO,
+    TD_GOOD_SIGNAL_SERVICE_INFO,
+    TD_SERVICE_INFO,
 )
 
 from tests.common import MockConfigEntry
@@ -776,6 +779,161 @@ async def test_sensors_medium_type_absent_for_legacy_entries(
     await hass.async_block_till_done()
     assert len(hass.states.async_all("sensor")) == 4
     assert hass.states.get("sensor.pro_plus_eeff_medium_type") is None
+
+    assert await hass.config_entries.async_unload(entry.entry_id)
+    await hass.async_block_till_done()
+
+
+# ---------------------------------------------------------------------------
+# Top-mount (TD40/TD200) sensor tests
+# ---------------------------------------------------------------------------
+
+# Air-gap reading produced by TD_GOOD_SIGNAL_SERVICE_INFO (raw=950, raw_temp=67,
+# AIR coefficients: c0=0.153096, c1=0.000327, c2=-0.000000294).
+# mm = int(950 * (0.153096 + 0.000327*67 + (-0.000000294)*67²)) = int(165.0) = 165
+_TD_GOOD_SIGNAL_AIR_GAP_MM = 165
+
+
+async def test_sensors_top_mount_fill_percent(hass: HomeAssistant) -> None:
+    """Test fill% inversion for a TD40/TD200 top-mount sensor.
+
+    The sensor measures a decreasing air gap above the liquid surface.
+    fill% = (tank_height - air_gap) / tank_height * 100.
+    """
+    tank_height_mm = 400
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        unique_id="aa:bb:cc:dd:75:10",
+        data={
+            CONF_MEDIUM_TYPE: MediumType.AIR.value,
+            CONF_TANK_SIZE: TankSize.CUSTOM,
+            CONF_CUSTOM_TANK_HEIGHT: tank_height_mm,
+            CONF_TOP_MOUNT: True,
+        },
+    )
+    entry.add_to_hass(hass)
+
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    inject_bluetooth_service_info(hass, TD_GOOD_SIGNAL_SERVICE_INFO)
+    await hass.async_block_till_done()
+
+    # Expect: battery, reading_quality, tank_level, temperature (4 base enabled),
+    # tank_level_percent (synthesized), medium_type (injected) = 6 sensors.
+    # battery_voltage and signal_strength are disabled by default.
+    assert len(hass.states.async_all("sensor")) == 6
+
+    tank_level_sensor = hass.states.get("sensor.td40_td200_7510_tank_level")
+    assert tank_level_sensor is not None
+    assert tank_level_sensor.state == str(_TD_GOOD_SIGNAL_AIR_GAP_MM)
+
+    # fill% = (400 - 165) / 400 * 100 = 58.75 → 58.8
+    expected_pct = round(
+        (tank_height_mm - _TD_GOOD_SIGNAL_AIR_GAP_MM) / tank_height_mm * 100, 1
+    )
+    fill_sensor = hass.states.get("sensor.td40_td200_7510_tank_fill")
+    assert fill_sensor is not None
+    assert float(fill_sensor.state) == expected_pct
+
+    medium_type_sensor = hass.states.get("sensor.td40_td200_7510_medium_type")
+    assert medium_type_sensor is not None
+    assert medium_type_sensor.state == MediumType.AIR.value
+
+    # No propane_preset sensor for AIR medium
+    assert hass.states.get("sensor.td40_td200_7510_propane_preset") is None
+
+    assert await hass.config_entries.async_unload(entry.entry_id)
+    await hass.async_block_till_done()
+
+
+async def test_sensors_top_mount_empty_tank(hass: HomeAssistant) -> None:
+    """Test fill% clamps to 0% when air gap equals or exceeds tank height."""
+    tank_height_mm = 100
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        unique_id="aa:bb:cc:dd:75:10",
+        data={
+            CONF_MEDIUM_TYPE: MediumType.AIR.value,
+            CONF_TANK_SIZE: TankSize.CUSTOM,
+            CONF_CUSTOM_TANK_HEIGHT: tank_height_mm,
+            CONF_TOP_MOUNT: True,
+        },
+    )
+    entry.add_to_hass(hass)
+
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    # TD_GOOD_SIGNAL reports 165 mm air gap — greater than tank height of 100 mm.
+    # fill% would be negative; clamped to 0.0.
+    inject_bluetooth_service_info(hass, TD_GOOD_SIGNAL_SERVICE_INFO)
+    await hass.async_block_till_done()
+
+    fill_sensor = hass.states.get("sensor.td40_td200_7510_tank_fill")
+    assert fill_sensor is not None
+    assert float(fill_sensor.state) == 0.0
+
+    assert await hass.config_entries.async_unload(entry.entry_id)
+    await hass.async_block_till_done()
+
+
+async def test_sensors_top_mount_no_fill_percent_when_height_zero(
+    hass: HomeAssistant,
+) -> None:
+    """Test no fill% sensor when custom_tank_height is 0 (user opted out)."""
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        unique_id="aa:bb:cc:dd:75:10",
+        data={
+            CONF_MEDIUM_TYPE: MediumType.AIR.value,
+            CONF_TANK_SIZE: TankSize.CUSTOM,
+            CONF_CUSTOM_TANK_HEIGHT: 0,
+            CONF_TOP_MOUNT: True,
+        },
+    )
+    entry.add_to_hass(hass)
+
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    inject_bluetooth_service_info(hass, TD_GOOD_SIGNAL_SERVICE_INFO)
+    await hass.async_block_till_done()
+
+    assert hass.states.get("sensor.td40_td200_7510_tank_fill") is None
+
+    assert await hass.config_entries.async_unload(entry.entry_id)
+    await hass.async_block_till_done()
+
+
+async def test_sensors_top_mount_full_tank(hass: HomeAssistant) -> None:
+    """Test fill% is 100% when air gap is 0 (tank completely full).
+
+    TD_SERVICE_INFO reports level=0 mm (air gap = 0), meaning the liquid is
+    right at the sensor — tank is full.
+    """
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        unique_id="aa:bb:cc:dd:75:10",
+        data={
+            CONF_MEDIUM_TYPE: MediumType.AIR.value,
+            CONF_TANK_SIZE: TankSize.CUSTOM,
+            CONF_CUSTOM_TANK_HEIGHT: 400,
+            CONF_TOP_MOUNT: True,
+        },
+    )
+    entry.add_to_hass(hass)
+
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    # TD_SERVICE_INFO: reading_quality=1, level=0 mm
+    inject_bluetooth_service_info(hass, TD_SERVICE_INFO)
+    await hass.async_block_till_done()
+
+    fill_sensor = hass.states.get("sensor.td40_td200_7510_tank_fill")
+    assert fill_sensor is not None
+    assert float(fill_sensor.state) == 100.0
 
     assert await hass.config_entries.async_unload(entry.entry_id)
     await hass.async_block_till_done()

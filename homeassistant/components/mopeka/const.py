@@ -10,6 +10,15 @@ DOMAIN = "mopeka"
 CONF_CUSTOM_TANK_HEIGHT: Final = "custom_tank_height"
 CONF_MEDIUM_TYPE: Final = "medium_type"
 CONF_TANK_SIZE: Final = "tank_size"
+CONF_TOP_MOUNT: Final = "top_mount"
+
+# Manufacturer ID used by all Mopeka BLE devices.
+MOPEKA_MANUFACTURER_ID: Final = 89
+
+# Model IDs (lower nibble of manufacturer data byte 0) for top-mount sensors.
+# These sensors measure the air gap above the liquid surface, so fill %
+# increases as the reading decreases.
+TOP_MOUNT_MODEL_IDS: Final[frozenset[int]] = frozenset({0x0A, 0x0B})
 
 DEFAULT_MEDIUM_TYPE: Final = MediumType.PROPANE.value
 DEFAULT_CUSTOM_TANK_HEIGHT: Final = 0

@@ -38,6 +38,7 @@ from .const import (
     CONF_CUSTOM_TANK_HEIGHT,
     CONF_MEDIUM_TYPE,
     CONF_TANK_SIZE,
+    CONF_TOP_MOUNT,
     DEFAULT_CUSTOM_TANK_HEIGHT,
     DEFAULT_MEDIUM_TYPE,
     HORIZONTAL_TANK_SIZES,
@@ -161,6 +162,10 @@ def _get_tank_level_range(
                         coefficients are applied by the library per CONF_MEDIUM_TYPE).
     Other medium + preset → not permitted; preset ranges are propane-specific.
 
+    Top-mount (TD40/TD200) + Custom → inverted range: the sensor measures the
+                        decreasing air gap above the liquid surface, so
+                        (empty_mm=height, full_mm=0.0) inverts the fill formula.
+
     Legacy entries without CONF_MEDIUM_TYPE default to propane.
     """
     tank_size = entry_data.get(CONF_TANK_SIZE)
@@ -169,7 +174,13 @@ def _get_tank_level_range(
     medium_type = entry_data.get(CONF_MEDIUM_TYPE, DEFAULT_MEDIUM_TYPE)
     if tank_size == TankSize.CUSTOM:
         height = entry_data.get(CONF_CUSTOM_TANK_HEIGHT, DEFAULT_CUSTOM_TANK_HEIGHT)
-        return (0, height, False) if height > 0 else None
+        if height <= 0:
+            return None
+        if entry_data.get(CONF_TOP_MOUNT, False):
+            # Top-mount: reading decreases as tank fills.  Invert by swapping
+            # empty/full so the standard formula produces the correct fill %.
+            return (float(height), 0.0, False)
+        return (0, height, False)
     # Preset ranges are calibrated for propane coefficients only.
     if medium_type != DEFAULT_MEDIUM_TYPE:
         return None

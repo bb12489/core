@@ -9,6 +9,7 @@ from homeassistant.components.mopeka.const import (
     CONF_CUSTOM_TANK_HEIGHT,
     CONF_MEDIUM_TYPE,
     CONF_TANK_SIZE,
+    CONF_TOP_MOUNT,
     DOMAIN,
     MediumType,
     TankSize,
@@ -16,7 +17,7 @@ from homeassistant.components.mopeka.const import (
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 
-from . import NOT_MOPEKA_SERVICE_INFO, PRO_SERVICE_INFO
+from . import NOT_MOPEKA_SERVICE_INFO, PRO_SERVICE_INFO, TD_SERVICE_INFO
 
 from tests.common import MockConfigEntry
 
@@ -699,3 +700,143 @@ async def test_reconfigure_flow_non_propane(hass: HomeAssistant) -> None:
     assert entry.data[CONF_MEDIUM_TYPE] == MediumType.FRESH_WATER.value
     assert entry.data[CONF_TANK_SIZE] == TankSize.CUSTOM
     assert entry.data[CONF_CUSTOM_TANK_HEIGHT] == 350
+
+
+# ---------------------------------------------------------------------------
+# TD40/TD200 top-mount sensor flows
+# ---------------------------------------------------------------------------
+
+
+async def test_async_step_bluetooth_td40_td200_auto_detected(
+    hass: HomeAssistant,
+) -> None:
+    """Test BT discovery of a TD40/TD200 auto-sets AIR and skips medium type form."""
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN,
+        context={"source": config_entries.SOURCE_BLUETOOTH},
+        data=TD_SERVICE_INFO,
+    )
+    # Must jump straight to custom_height — no medium type form shown.
+    assert result["type"] is FlowResultType.FORM
+    assert result["step_id"] == "custom_height"
+
+    # Enter tank height
+    with patch("homeassistant.components.mopeka.async_setup_entry", return_value=True):
+        result2 = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            user_input={CONF_CUSTOM_TANK_HEIGHT: 400},
+        )
+    assert result2["type"] is FlowResultType.CREATE_ENTRY
+    assert result2["data"][CONF_MEDIUM_TYPE] == MediumType.AIR.value
+    assert result2["data"][CONF_TANK_SIZE] == TankSize.CUSTOM
+    assert result2["data"][CONF_CUSTOM_TANK_HEIGHT] == 400
+    assert result2["data"][CONF_TOP_MOUNT] is True
+    assert result2["result"].unique_id == "aa:bb:cc:dd:75:10"
+
+
+async def test_async_step_user_td40_td200_auto_detected(hass: HomeAssistant) -> None:
+    """Test user flow for TD40/TD200 overrides medium type to AIR."""
+    with patch(
+        "homeassistant.components.mopeka.config_flow.async_discovered_service_info",
+        return_value=[TD_SERVICE_INFO],
+    ):
+        result = await hass.config_entries.flow.async_init(
+            DOMAIN,
+            context={"source": config_entries.SOURCE_USER},
+        )
+    assert result["type"] is FlowResultType.FORM
+    assert result["step_id"] == "user"
+
+    # User picks a medium type (diesel) — it will be overridden to AIR for TD devices.
+    result2 = await hass.config_entries.flow.async_configure(
+        result["flow_id"],
+        user_input={
+            "address": "aa:bb:cc:dd:75:10",
+            CONF_MEDIUM_TYPE: MediumType.DIESEL.value,
+        },
+    )
+    # Goes straight to custom_height, not tank_config or custom_height for diesel
+    assert result2["type"] is FlowResultType.FORM
+    assert result2["step_id"] == "custom_height"
+
+    with patch("homeassistant.components.mopeka.async_setup_entry", return_value=True):
+        result3 = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            user_input={CONF_CUSTOM_TANK_HEIGHT: 350},
+        )
+    assert result3["type"] is FlowResultType.CREATE_ENTRY
+    assert result3["data"][CONF_MEDIUM_TYPE] == MediumType.AIR.value
+    assert result3["data"][CONF_TOP_MOUNT] is True
+    assert result3["result"].unique_id == "aa:bb:cc:dd:75:10"
+
+
+async def test_reconfigure_td40_td200_skips_medium_type_step(
+    hass: HomeAssistant,
+) -> None:
+    """Test reconfigure for a top-mount entry goes straight to custom height."""
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        unique_id="aa:bb:cc:dd:75:10",
+        title="TD40/TD200 7510",
+        data={
+            CONF_MEDIUM_TYPE: MediumType.AIR.value,
+            CONF_TANK_SIZE: TankSize.CUSTOM,
+            CONF_CUSTOM_TANK_HEIGHT: 400,
+            CONF_TOP_MOUNT: True,
+        },
+    )
+    entry.add_to_hass(hass)
+
+    with patch("homeassistant.components.mopeka.async_setup_entry", return_value=True):
+        await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+
+        result = await entry.start_reconfigure_flow(hass)
+        # Must skip the reconfigure (medium type) step and go to custom height directly.
+        assert result["type"] is FlowResultType.FORM
+        assert result["step_id"] == "reconfigure_custom_height"
+
+        result2 = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            user_input={CONF_CUSTOM_TANK_HEIGHT: 500},
+        )
+        await hass.async_block_till_done()
+
+    assert result2["type"] is FlowResultType.ABORT
+    assert result2["reason"] == "reconfigure_successful"
+    assert entry.data[CONF_MEDIUM_TYPE] == MediumType.AIR.value
+    assert entry.data[CONF_CUSTOM_TANK_HEIGHT] == 500
+    assert entry.data[CONF_TOP_MOUNT] is True
+
+
+async def test_options_td40_td200_skips_medium_type_step(hass: HomeAssistant) -> None:
+    """Test options flow for a top-mount entry goes straight to custom height."""
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        unique_id="aa:bb:cc:dd:75:10",
+        title="TD40/TD200 7510",
+        data={
+            CONF_MEDIUM_TYPE: MediumType.AIR.value,
+            CONF_TANK_SIZE: TankSize.CUSTOM,
+            CONF_CUSTOM_TANK_HEIGHT: 400,
+            CONF_TOP_MOUNT: True,
+        },
+    )
+    entry.add_to_hass(hass)
+    await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    result = await hass.config_entries.options.async_init(entry.entry_id)
+    # Must skip the init (medium type) step and go to custom height directly.
+    assert result["type"] is FlowResultType.FORM
+    assert result["step_id"] == "custom_height"
+
+    result2 = await hass.config_entries.options.async_configure(
+        result["flow_id"],
+        user_input={CONF_CUSTOM_TANK_HEIGHT: 600},
+    )
+    assert result2["type"] is FlowResultType.CREATE_ENTRY
+
+    assert entry.data[CONF_MEDIUM_TYPE] == MediumType.AIR.value
+    assert entry.data[CONF_CUSTOM_TANK_HEIGHT] == 600
+    assert entry.data[CONF_TOP_MOUNT] is True

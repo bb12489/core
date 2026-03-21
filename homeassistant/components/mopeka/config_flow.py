@@ -22,13 +22,28 @@ from .const import (
     CONF_CUSTOM_TANK_HEIGHT,
     CONF_MEDIUM_TYPE,
     CONF_TANK_SIZE,
+    CONF_TOP_MOUNT,
     DEFAULT_CUSTOM_TANK_HEIGHT,
     DEFAULT_MEDIUM_TYPE,
     DEFAULT_TANK_SIZE,
     DOMAIN,
+    MOPEKA_MANUFACTURER_ID,
     MediumType,
+    TOP_MOUNT_MODEL_IDS,
     TankSize,
 )
+
+
+def _is_top_mount_sensor(discovery_info: BluetoothServiceInfoBleak) -> bool:
+    """Return True if the device is a top-mount sensor (TD40/TD200).
+
+    Top-mount sensors always measure the air gap above the liquid surface and
+    must use the AIR acoustic coefficient — the user cannot override this.
+    """
+    mfr_data = discovery_info.manufacturer_data.get(MOPEKA_MANUFACTURER_ID)
+    if not mfr_data:
+        return False
+    return (mfr_data[0] & 0x0F) in TOP_MOUNT_MODEL_IDS
 
 
 def format_medium_type(medium_type: Enum) -> str:
@@ -109,7 +124,9 @@ class MopekaConfigFlow(ConfigFlow, domain=DOMAIN):
         self._discovery_info: BluetoothServiceInfoBleak | None = None
         self._discovered_device: DeviceData | None = None
         self._discovered_devices: dict[str, str] = {}
+        self._discovered_service_infos: dict[str, BluetoothServiceInfoBleak] = {}
         self._medium_type: str = DEFAULT_MEDIUM_TYPE
+        self._is_top_mount: bool = False
         self._title: str = ""
         self._address: str | None = None
 
@@ -143,6 +160,15 @@ class MopekaConfigFlow(ConfigFlow, domain=DOMAIN):
         assert self._discovery_info is not None
         discovery_info = self._discovery_info
         title = device.title or device.get_device_name() or discovery_info.name
+
+        # Top-mount sensors (TD40/TD200) always use AIR — bypass the medium type form.
+        if _is_top_mount_sensor(discovery_info):
+            self._is_top_mount = True
+            self._medium_type = MediumType.AIR.value
+            self._title = title
+            self._discovered_devices[discovery_info.address] = title
+            return await self.async_step_custom_height()
+
         if user_input is not None:
             self._medium_type = user_input[CONF_MEDIUM_TYPE]
             self._title = title
@@ -167,6 +193,7 @@ class MopekaConfigFlow(ConfigFlow, domain=DOMAIN):
             CONF_MEDIUM_TYPE: self._medium_type,
             CONF_TANK_SIZE: tank_size,
             CONF_CUSTOM_TANK_HEIGHT: custom_height,
+            CONF_TOP_MOUNT: self._is_top_mount,
         }
         if self._discovery_info is not None:
             return self.async_create_entry(title=self._title, data=data)
@@ -211,6 +238,12 @@ class MopekaConfigFlow(ConfigFlow, domain=DOMAIN):
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
         """Handle reconfiguration — select medium type."""
+        entry = self._get_reconfigure_entry()
+        # Top-mount sensors have their medium type locked to AIR.
+        if entry.data.get(CONF_TOP_MOUNT, False):
+            self._medium_type = MediumType.AIR.value
+            return await self.async_step_reconfigure_custom_height()
+
         if user_input is not None:
             self._medium_type = user_input[CONF_MEDIUM_TYPE]
             if self._medium_type == DEFAULT_MEDIUM_TYPE:
@@ -220,7 +253,7 @@ class MopekaConfigFlow(ConfigFlow, domain=DOMAIN):
         return self.async_show_form(
             step_id="reconfigure",
             data_schema=_async_generate_medium_type_schema(
-                medium_type=self._get_reconfigure_entry().data.get(CONF_MEDIUM_TYPE),
+                medium_type=entry.data.get(CONF_MEDIUM_TYPE),
             ),
         )
 
@@ -283,8 +316,14 @@ class MopekaConfigFlow(ConfigFlow, domain=DOMAIN):
     ) -> ConfigFlowResult:
         """Handle the user step to pick a discovered device and select medium type."""
         if user_input is not None:
-            self._medium_type = user_input[CONF_MEDIUM_TYPE]
             self._address = user_input[CONF_ADDRESS]
+            self._medium_type = user_input[CONF_MEDIUM_TYPE]
+            # Top-mount sensors always use AIR regardless of user selection.
+            service_info = self._discovered_service_infos.get(self._address)
+            if service_info is not None and _is_top_mount_sensor(service_info):
+                self._is_top_mount = True
+                self._medium_type = MediumType.AIR.value
+                return await self.async_step_custom_height()
             if self._medium_type == DEFAULT_MEDIUM_TYPE:
                 return await self.async_step_tank_config()
             return await self.async_step_custom_height()
@@ -299,6 +338,7 @@ class MopekaConfigFlow(ConfigFlow, domain=DOMAIN):
                 self._discovered_devices[address] = (
                     device.title or device.get_device_name() or discovery_info.name
                 )
+                self._discovered_service_infos[address] = discovery_info
 
         if not self._discovered_devices:
             return self.async_abort(reason="no_devices_found")
@@ -325,6 +365,11 @@ class MopekaOptionsFlow(config_entries.OptionsFlow):
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
         """Handle options flow — select medium type."""
+        # Top-mount sensors have their medium type locked to AIR.
+        if self.config_entry.data.get(CONF_TOP_MOUNT, False):
+            self._medium_type = MediumType.AIR.value
+            return await self.async_step_custom_height()
+
         if user_input is not None:
             self._medium_type = user_input[CONF_MEDIUM_TYPE]
             if self._medium_type == DEFAULT_MEDIUM_TYPE:
