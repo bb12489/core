@@ -5,12 +5,14 @@ import math
 from homeassistant.components.mopeka.const import (
     CONF_CUSTOM_TANK_HEIGHT,
     CONF_MEDIUM_TYPE,
+    CONF_TANK_CAPACITY,
     CONF_TANK_SIZE,
     CONF_TOP_MOUNT,
     DOMAIN,
     HORIZONTAL_TANK_SIZES,
     IBC_TANK_SIZE_RANGES,
     TANK_EMPTY_MM,
+    TANK_SIZE_CAPACITIES,
     TANK_SIZE_RANGES,
     MediumType,
     TankSize,
@@ -23,6 +25,7 @@ from homeassistant.const import (
     STATE_UNKNOWN,
     UnitOfLength,
     UnitOfTemperature,
+    UnitOfVolume,
 )
 from homeassistant.core import HomeAssistant
 
@@ -184,7 +187,7 @@ async def test_sensors_good_signal_20lb_tank(hass: HomeAssistant) -> None:
 
     inject_bluetooth_service_info(hass, PRO_GOOD_SIGNAL_SERVICE_INFO)
     await hass.async_block_till_done()
-    assert len(hass.states.async_all("sensor")) == 5
+    assert len(hass.states.async_all("sensor")) == 6
 
     pct_sensor = hass.states.get("sensor.pro_plus_eeff_tank_fill")
     assert pct_sensor is not None
@@ -214,7 +217,7 @@ async def test_sensors_good_signal_30lb_tank(hass: HomeAssistant) -> None:
 
     inject_bluetooth_service_info(hass, PRO_GOOD_SIGNAL_SERVICE_INFO)
     await hass.async_block_till_done()
-    assert len(hass.states.async_all("sensor")) == 5
+    assert len(hass.states.async_all("sensor")) == 6
 
     pct_sensor = hass.states.get("sensor.pro_plus_eeff_tank_fill")
     assert pct_sensor is not None
@@ -243,7 +246,7 @@ async def test_sensors_good_signal_40lb_tank(hass: HomeAssistant) -> None:
 
     inject_bluetooth_service_info(hass, PRO_GOOD_SIGNAL_SERVICE_INFO)
     await hass.async_block_till_done()
-    assert len(hass.states.async_all("sensor")) == 5
+    assert len(hass.states.async_all("sensor")) == 6
 
     pct_sensor = hass.states.get("sensor.pro_plus_eeff_tank_fill")
     assert pct_sensor is not None
@@ -355,7 +358,7 @@ async def test_sensors_good_signal_100lb_tank(hass: HomeAssistant) -> None:
 
     inject_bluetooth_service_info(hass, PRO_GOOD_SIGNAL_SERVICE_INFO)
     await hass.async_block_till_done()
-    assert len(hass.states.async_all("sensor")) == 5
+    assert len(hass.states.async_all("sensor")) == 6
 
     pct_sensor = hass.states.get("sensor.pro_plus_eeff_tank_fill")
     assert pct_sensor is not None
@@ -384,7 +387,7 @@ async def test_sensors_good_signal_100gal_h_tank(hass: HomeAssistant) -> None:
 
     inject_bluetooth_service_info(hass, PRO_GOOD_SIGNAL_SERVICE_INFO)
     await hass.async_block_till_done()
-    assert len(hass.states.async_all("sensor")) == 5
+    assert len(hass.states.async_all("sensor")) == 6
 
     pct_sensor = hass.states.get("sensor.pro_plus_eeff_tank_fill")
     assert pct_sensor is not None
@@ -413,7 +416,7 @@ async def test_sensors_good_signal_500gal_h_tank(hass: HomeAssistant) -> None:
 
     inject_bluetooth_service_info(hass, PRO_GOOD_SIGNAL_SERVICE_INFO)
     await hass.async_block_till_done()
-    assert len(hass.states.async_all("sensor")) == 5
+    assert len(hass.states.async_all("sensor")) == 6
 
     pct_sensor = hass.states.get("sensor.pro_plus_eeff_tank_fill")
     assert pct_sensor is not None
@@ -442,7 +445,7 @@ async def test_sensors_good_signal_1000gal_h_tank(hass: HomeAssistant) -> None:
 
     inject_bluetooth_service_info(hass, PRO_GOOD_SIGNAL_SERVICE_INFO)
     await hass.async_block_till_done()
-    assert len(hass.states.async_all("sensor")) == 5
+    assert len(hass.states.async_all("sensor")) == 6
 
     pct_sensor = hass.states.get("sensor.pro_plus_eeff_tank_fill")
     assert pct_sensor is not None
@@ -468,7 +471,7 @@ async def test_sensors_unusable_signal_with_tank_size(hass: HomeAssistant) -> No
 
     inject_bluetooth_service_info(hass, PRO_UNUSABLE_SIGNAL_SERVICE_INFO)
     await hass.async_block_till_done()
-    assert len(hass.states.async_all("sensor")) == 5
+    assert len(hass.states.async_all("sensor")) == 6
 
     pct_sensor = hass.states.get("sensor.pro_plus_eeff_tank_fill")
     assert pct_sensor is not None
@@ -496,7 +499,7 @@ async def test_sensors_good_signal_12_2gal_rv_h_tank(hass: HomeAssistant) -> Non
 
     inject_bluetooth_service_info(hass, PRO_GOOD_SIGNAL_SERVICE_INFO)
     await hass.async_block_till_done()
-    assert len(hass.states.async_all("sensor")) == 5
+    assert len(hass.states.async_all("sensor")) == 6
 
     pct_sensor = hass.states.get("sensor.pro_plus_eeff_tank_fill")
     assert pct_sensor is not None
@@ -524,7 +527,7 @@ async def test_sensors_good_signal_16gal_rv_h_tank(hass: HomeAssistant) -> None:
 
     inject_bluetooth_service_info(hass, PRO_GOOD_SIGNAL_SERVICE_INFO)
     await hass.async_block_till_done()
-    assert len(hass.states.async_all("sensor")) == 5
+    assert len(hass.states.async_all("sensor")) == 6
 
     pct_sensor = hass.states.get("sensor.pro_plus_eeff_tank_fill")
     assert pct_sensor is not None
@@ -555,7 +558,7 @@ async def test_sensors_good_signal_20_3gal_rv_h_tank(hass: HomeAssistant) -> Non
 
     inject_bluetooth_service_info(hass, PRO_GOOD_SIGNAL_SERVICE_INFO)
     await hass.async_block_till_done()
-    assert len(hass.states.async_all("sensor")) == 5
+    assert len(hass.states.async_all("sensor")) == 6
 
     pct_sensor = hass.states.get("sensor.pro_plus_eeff_tank_fill")
     assert pct_sensor is not None
@@ -586,7 +589,7 @@ async def test_sensors_good_signal_29_3gal_rv_h_tank(hass: HomeAssistant) -> Non
 
     inject_bluetooth_service_info(hass, PRO_GOOD_SIGNAL_SERVICE_INFO)
     await hass.async_block_till_done()
-    assert len(hass.states.async_all("sensor")) == 5
+    assert len(hass.states.async_all("sensor")) == 6
 
     pct_sensor = hass.states.get("sensor.pro_plus_eeff_tank_fill")
     assert pct_sensor is not None
@@ -643,7 +646,7 @@ async def test_sensors_propane_preset_diagnostic(hass: HomeAssistant) -> None:
     inject_bluetooth_service_info(hass, PRO_GOOD_SIGNAL_SERVICE_INFO)
     await hass.async_block_till_done()
     # 4 base sensors + tank fill + medium type + propane preset
-    assert len(hass.states.async_all("sensor")) == 7
+    assert len(hass.states.async_all("sensor")) == 8
 
     preset_sensor = hass.states.get("sensor.pro_plus_eeff_propane_preset")
     assert preset_sensor is not None
@@ -977,7 +980,7 @@ async def test_sensors_ibc_275_bottom_mount(hass: HomeAssistant) -> None:
     inject_bluetooth_service_info(hass, PRO_GOOD_SIGNAL_SERVICE_INFO)
     await hass.async_block_till_done()
     # 4 base + medium_type + tank_fill = 6 sensors
-    assert len(hass.states.async_all("sensor")) == 6
+    assert len(hass.states.async_all("sensor")) == 7
 
     pct_sensor = hass.states.get("sensor.pro_plus_eeff_tank_fill")
     assert pct_sensor is not None
@@ -1132,6 +1135,121 @@ async def test_sensors_ibc_preset_not_used_for_propane(hass: HomeAssistant) -> N
     pct_sensor = hass.states.get("sensor.pro_plus_eeff_tank_fill")
     assert pct_sensor is not None
     assert float(pct_sensor.state) == expected_pct
+
+    assert await hass.config_entries.async_unload(entry.entry_id)
+    await hass.async_block_till_done()
+
+
+# ---------------------------------------------------------------------------
+# Tank volume sensor tests
+# ---------------------------------------------------------------------------
+
+
+async def test_sensors_volume_sensor_preset_tank(hass: HomeAssistant) -> None:
+    """Test that a volume sensor is created for a preset tank.
+
+    LB_20 capacity = 4.7 gal; fill = 100% (level exceeds full); volume = 4.7 gal.
+    """
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        unique_id="aa:bb:cc:dd:ee:ff",
+        data={CONF_TANK_SIZE: TankSize.LB_20},
+    )
+    entry.add_to_hass(hass)
+
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    inject_bluetooth_service_info(hass, PRO_GOOD_SIGNAL_SERVICE_INFO)
+    await hass.async_block_till_done()
+
+    vol_sensor = hass.states.get("sensor.pro_plus_eeff_tank_volume")
+    assert vol_sensor is not None
+    assert float(vol_sensor.state) == round(
+        1.0 * TANK_SIZE_CAPACITIES[TankSize.LB_20], 2
+    )
+    assert vol_sensor.attributes[ATTR_UNIT_OF_MEASUREMENT] == UnitOfVolume.GALLONS
+    assert vol_sensor.attributes[ATTR_STATE_CLASS] == "measurement"
+
+    assert await hass.config_entries.async_unload(entry.entry_id)
+    await hass.async_block_till_done()
+
+
+async def test_sensors_volume_sensor_custom_with_capacity(hass: HomeAssistant) -> None:
+    """Test that a volume sensor is created for a custom tank with capacity configured.
+
+    Height=682 mm, level=341 mm → fill=50.0%; capacity=20.0 gal → volume=10.0 gal.
+    """
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        unique_id="aa:bb:cc:dd:ee:ff",
+        data={
+            CONF_TANK_SIZE: TankSize.CUSTOM,
+            CONF_CUSTOM_TANK_HEIGHT: 682,
+            CONF_TANK_CAPACITY: 20.0,
+        },
+    )
+    entry.add_to_hass(hass)
+
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    inject_bluetooth_service_info(hass, PRO_GOOD_SIGNAL_SERVICE_INFO)
+    await hass.async_block_till_done()
+    # 4 base + tank_fill + tank_volume = 6
+    assert len(hass.states.async_all("sensor")) == 6
+
+    vol_sensor = hass.states.get("sensor.pro_plus_eeff_tank_volume")
+    assert vol_sensor is not None
+    assert float(vol_sensor.state) == 10.0
+    assert vol_sensor.attributes[ATTR_UNIT_OF_MEASUREMENT] == UnitOfVolume.GALLONS
+
+    assert await hass.config_entries.async_unload(entry.entry_id)
+    await hass.async_block_till_done()
+
+
+async def test_sensors_volume_sensor_custom_no_capacity(hass: HomeAssistant) -> None:
+    """Test that no volume sensor is created when custom tank capacity is 0."""
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        unique_id="aa:bb:cc:dd:ee:ff",
+        data={
+            CONF_TANK_SIZE: TankSize.CUSTOM,
+            CONF_CUSTOM_TANK_HEIGHT: 682,
+            CONF_TANK_CAPACITY: 0.0,
+        },
+    )
+    entry.add_to_hass(hass)
+
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    inject_bluetooth_service_info(hass, PRO_GOOD_SIGNAL_SERVICE_INFO)
+    await hass.async_block_till_done()
+    assert hass.states.get("sensor.pro_plus_eeff_tank_volume") is None
+
+    assert await hass.config_entries.async_unload(entry.entry_id)
+    await hass.async_block_till_done()
+
+
+async def test_sensors_volume_sensor_unusable_signal(hass: HomeAssistant) -> None:
+    """Test that volume sensor is created but unknown when signal is unusable."""
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        unique_id="aa:bb:cc:dd:ee:ff",
+        data={CONF_TANK_SIZE: TankSize.LB_20},
+    )
+    entry.add_to_hass(hass)
+
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    inject_bluetooth_service_info(hass, PRO_UNUSABLE_SIGNAL_SERVICE_INFO)
+    await hass.async_block_till_done()
+
+    vol_sensor = hass.states.get("sensor.pro_plus_eeff_tank_volume")
+    assert vol_sensor is not None
+    assert vol_sensor.state == STATE_UNKNOWN
 
     assert await hass.config_entries.async_unload(entry.entry_id)
     await hass.async_block_till_done()

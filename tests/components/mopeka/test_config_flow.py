@@ -8,6 +8,7 @@ from homeassistant import config_entries
 from homeassistant.components.mopeka.const import (
     CONF_CUSTOM_TANK_HEIGHT,
     CONF_MEDIUM_TYPE,
+    CONF_TANK_CAPACITY,
     CONF_TANK_SIZE,
     CONF_TOP_MOUNT,
     DOMAIN,
@@ -56,6 +57,8 @@ async def test_async_step_bluetooth_valid_device(hass: HomeAssistant) -> None:
         CONF_MEDIUM_TYPE: MediumType.PROPANE.value,
         CONF_TANK_SIZE: TankSize.LB_20,
         CONF_CUSTOM_TANK_HEIGHT: 0,
+        CONF_TANK_CAPACITY: 0.0,
+        CONF_TOP_MOUNT: False,
     }
     assert result3["result"].unique_id == "aa:bb:cc:dd:ee:ff"
 
@@ -88,15 +91,16 @@ async def test_async_step_bluetooth_valid_device_custom_tank(
     assert result3["type"] is FlowResultType.FORM
     assert result3["step_id"] == "custom_height"
 
-    # Step 3: enter custom height
+    # Step 3: enter custom height and capacity
     with patch("homeassistant.components.mopeka.async_setup_entry", return_value=True):
         result4 = await hass.config_entries.flow.async_configure(
             result["flow_id"],
-            user_input={CONF_CUSTOM_TANK_HEIGHT: 500},
+            user_input={CONF_CUSTOM_TANK_HEIGHT: 500, CONF_TANK_CAPACITY: 10.0},
         )
     assert result4["type"] is FlowResultType.CREATE_ENTRY
     assert result4["data"][CONF_TANK_SIZE] == TankSize.CUSTOM
     assert result4["data"][CONF_CUSTOM_TANK_HEIGHT] == 500
+    assert result4["data"][CONF_TANK_CAPACITY] == 10.0
     assert result4["result"].unique_id == "aa:bb:cc:dd:ee:ff"
 
 
@@ -158,11 +162,11 @@ async def test_async_step_bluetooth_non_propane(hass: HomeAssistant) -> None:
     assert result3["type"] is FlowResultType.FORM
     assert result3["step_id"] == "custom_height"
 
-    # Step 3: enter custom height
+    # Step 3: enter custom height and capacity
     with patch("homeassistant.components.mopeka.async_setup_entry", return_value=True):
         result4 = await hass.config_entries.flow.async_configure(
             result["flow_id"],
-            user_input={CONF_CUSTOM_TANK_HEIGHT: 600},
+            user_input={CONF_CUSTOM_TANK_HEIGHT: 600, CONF_TANK_CAPACITY: 0.0},
         )
     assert result4["type"] is FlowResultType.CREATE_ENTRY
     assert result4["data"][CONF_MEDIUM_TYPE] == MediumType.FRESH_WATER.value
@@ -264,11 +268,11 @@ async def test_async_step_user_non_propane(hass: HomeAssistant) -> None:
     assert result3["type"] is FlowResultType.FORM
     assert result3["step_id"] == "custom_height"
 
-    # Step 3: enter custom height
+    # Step 3: enter custom height and capacity
     with patch("homeassistant.components.mopeka.async_setup_entry", return_value=True):
         result4 = await hass.config_entries.flow.async_configure(
             result["flow_id"],
-            user_input={CONF_CUSTOM_TANK_HEIGHT: 600},
+            user_input={CONF_CUSTOM_TANK_HEIGHT: 600, CONF_TANK_CAPACITY: 0.0},
         )
     assert result4["type"] is FlowResultType.CREATE_ENTRY
     assert result4["data"][CONF_MEDIUM_TYPE] == MediumType.DIESEL.value
@@ -549,16 +553,17 @@ async def test_async_step_reconfigure_options(hass: HomeAssistant) -> None:
     assert result3["type"] is FlowResultType.FORM
     assert result3["step_id"] == "custom_height"
 
-    # Step 3: enter custom height
+    # Step 3: enter custom height and capacity
     result4 = await hass.config_entries.options.async_configure(
         result["flow_id"],
-        user_input={CONF_CUSTOM_TANK_HEIGHT: 400},
+        user_input={CONF_CUSTOM_TANK_HEIGHT: 400, CONF_TANK_CAPACITY: 75.0},
     )
     assert result4["type"] is FlowResultType.CREATE_ENTRY
 
     assert entry.data[CONF_MEDIUM_TYPE] == MediumType.FRESH_WATER.value
     assert entry.data[CONF_TANK_SIZE] == TankSize.CUSTOM
     assert entry.data[CONF_CUSTOM_TANK_HEIGHT] == 400
+    assert entry.data[CONF_TANK_CAPACITY] == 75.0
 
 
 async def test_options_propane_flow(hass: HomeAssistant) -> None:
@@ -636,10 +641,10 @@ async def test_options_propane_custom_flow(hass: HomeAssistant) -> None:
     assert result3["type"] is FlowResultType.FORM
     assert result3["step_id"] == "custom_height"
 
-    # Step 3: enter custom height
+    # Step 3: enter custom height and capacity
     result4 = await hass.config_entries.options.async_configure(
         result["flow_id"],
-        user_input={CONF_CUSTOM_TANK_HEIGHT: 750},
+        user_input={CONF_CUSTOM_TANK_HEIGHT: 750, CONF_TANK_CAPACITY: 0.0},
     )
     assert result4["type"] is FlowResultType.CREATE_ENTRY
     assert entry.data[CONF_TANK_SIZE] == TankSize.CUSTOM
@@ -737,10 +742,10 @@ async def test_reconfigure_flow_propane_custom(hass: HomeAssistant) -> None:
         assert result3["type"] is FlowResultType.FORM
         assert result3["step_id"] == "reconfigure_custom_height"
 
-        # Step 3: enter custom height
+        # Step 3: enter custom height and capacity
         result4 = await hass.config_entries.flow.async_configure(
             result["flow_id"],
-            user_input={CONF_CUSTOM_TANK_HEIGHT: 900},
+            user_input={CONF_CUSTOM_TANK_HEIGHT: 900, CONF_TANK_CAPACITY: 0.0},
         )
         await hass.async_block_till_done()
 
@@ -787,10 +792,10 @@ async def test_reconfigure_flow_non_propane(hass: HomeAssistant) -> None:
         assert result3["type"] is FlowResultType.FORM
         assert result3["step_id"] == "reconfigure_custom_height"
 
-        # Step 3: enter custom height
+        # Step 3: enter custom height and capacity
         result4 = await hass.config_entries.flow.async_configure(
             result["flow_id"],
-            user_input={CONF_CUSTOM_TANK_HEIGHT: 350},
+            user_input={CONF_CUSTOM_TANK_HEIGHT: 350, CONF_TANK_CAPACITY: 0.0},
         )
         await hass.async_block_till_done()
 
@@ -868,11 +873,11 @@ async def test_async_step_bluetooth_td40_td200_auto_detected(
     assert result2["type"] is FlowResultType.FORM
     assert result2["step_id"] == "custom_height"
 
-    # Enter tank height
+    # Enter tank height and capacity
     with patch("homeassistant.components.mopeka.async_setup_entry", return_value=True):
         result3 = await hass.config_entries.flow.async_configure(
             result["flow_id"],
-            user_input={CONF_CUSTOM_TANK_HEIGHT: 400},
+            user_input={CONF_CUSTOM_TANK_HEIGHT: 400, CONF_TANK_CAPACITY: 0.0},
         )
     assert result3["type"] is FlowResultType.CREATE_ENTRY
     assert result3["data"][CONF_MEDIUM_TYPE] == MediumType.AIR.value

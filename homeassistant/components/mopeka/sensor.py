@@ -27,6 +27,7 @@ from homeassistant.const import (
     UnitOfElectricPotential,
     UnitOfLength,
     UnitOfTemperature,
+    UnitOfVolume,
 )
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity import EntityDescription
@@ -37,12 +38,15 @@ from . import MopekaConfigEntry
 from .const import (
     CONF_CUSTOM_TANK_HEIGHT,
     CONF_MEDIUM_TYPE,
+    CONF_TANK_CAPACITY,
     CONF_TANK_SIZE,
     CONF_TOP_MOUNT,
     DEFAULT_CUSTOM_TANK_HEIGHT,
     DEFAULT_MEDIUM_TYPE,
+    DEFAULT_TANK_CAPACITY,
     HORIZONTAL_TANK_SIZES,
     IBC_TANK_SIZE_RANGES,
+    TANK_SIZE_CAPACITIES,
     TANK_SIZE_RANGES,
     TankSize,
 )
@@ -112,6 +116,13 @@ SENSOR_DESCRIPTIONS: dict[str, SensorEntityDescription] = {
         native_unit_of_measurement=PERCENTAGE,
         state_class=SensorStateClass.MEASUREMENT,
     ),
+    "tank_volume": SensorEntityDescription(
+        key="tank_volume",
+        translation_key="tank_volume",
+        native_unit_of_measurement=UnitOfVolume.GALLONS,
+        state_class=SensorStateClass.MEASUREMENT,
+        suggested_display_precision=1,
+    ),
     "temperature": SensorEntityDescription(
         key="temperature",
         device_class=SensorDeviceClass.TEMPERATURE,
@@ -121,6 +132,7 @@ SENSOR_DESCRIPTIONS: dict[str, SensorEntityDescription] = {
 }
 
 _TANK_LEVEL_PERCENT_KEY = "tank_level_percent"
+_TANK_VOLUME_KEY = "tank_volume"
 _MEDIUM_TYPE_KEY = "medium_type"
 _PROPANE_PRESET_KEY = "propane_preset"
 
@@ -203,10 +215,26 @@ def _get_tank_level_range(
     return (*tank_range, tank_size in HORIZONTAL_TANK_SIZES)
 
 
+def _get_tank_capacity_gallons(entry_data: Mapping[str, Any]) -> float | None:
+    """Return the total tank capacity in gallons, or None if unavailable.
+
+    For preset tanks the capacity is looked up from TANK_SIZE_CAPACITIES.
+    For custom tanks the user-supplied CONF_TANK_CAPACITY is used (0 = disabled).
+    """
+    tank_size = entry_data.get(CONF_TANK_SIZE)
+    if tank_size is None:
+        return None
+    if tank_size == TankSize.CUSTOM:
+        capacity = float(entry_data.get(CONF_TANK_CAPACITY, DEFAULT_TANK_CAPACITY))
+        return capacity if capacity > 0 else None
+    return TANK_SIZE_CAPACITIES.get(tank_size)
+
+
 def make_sensor_update_to_bluetooth_data_update(
     tank_range: tuple[float, float, bool] | None,
     medium_type: str | None,
     propane_preset: str | None,
+    tank_capacity: float | None = None,
 ) -> Callable[[SensorUpdate], PassiveBluetoothDataUpdate]:
     """Return a sensor update converter that optionally synthesizes a tank fill %."""
 
@@ -246,6 +274,7 @@ def make_sensor_update_to_bluetooth_data_update(
                     ]
                     entity_names[pct_entity_key] = None
                     raw_level = sensor_values.native_value
+                    fill_pct: float | None = None
                     if isinstance(raw_level, (int, float)):
                         if is_horizontal:
                             # Cylindrical geometry: volume fraction is
@@ -260,11 +289,23 @@ def make_sensor_update_to_bluetooth_data_update(
                         else:
                             # Vertical / custom: linear interpolation.
                             pct = (raw_level - empty_mm) / (full_mm - empty_mm) * 100.0
-                        entity_data[pct_entity_key] = round(
-                            min(100.0, max(0.0, pct)), 1
+                        fill_pct = round(min(100.0, max(0.0, pct)), 1)
+                    entity_data[pct_entity_key] = fill_pct
+
+                    # Synthesize a tank volume sensor when total capacity is known.
+                    if tank_capacity is not None:
+                        vol_entity_key = PassiveBluetoothEntityKey(
+                            _TANK_VOLUME_KEY, device_key.device_id
                         )
-                    else:
-                        entity_data[pct_entity_key] = None
+                        entity_descriptions[vol_entity_key] = SENSOR_DESCRIPTIONS[
+                            _TANK_VOLUME_KEY
+                        ]
+                        entity_names[vol_entity_key] = None
+                        entity_data[vol_entity_key] = (
+                            round(fill_pct / 100.0 * tank_capacity, 2)
+                            if fill_pct is not None
+                            else None
+                        )
 
         # Inject a diagnostic sensor that reflects the configured medium type.
         if medium_type is not None:
@@ -307,9 +348,10 @@ async def async_setup_entry(
     tank_range = _get_tank_level_range(entry.data)
     medium_type = entry.data.get(CONF_MEDIUM_TYPE)
     propane_preset = entry.data.get(CONF_TANK_SIZE)
+    tank_capacity = _get_tank_capacity_gallons(entry.data)
     processor = PassiveBluetoothDataProcessor(
         make_sensor_update_to_bluetooth_data_update(
-            tank_range, medium_type, propane_preset
+            tank_range, medium_type, propane_preset, tank_capacity
         )
     )
     entry.async_on_unload(

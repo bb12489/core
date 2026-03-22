@@ -17,17 +17,17 @@
       },
       "custom_height": {
         "data": {
-          "custom_tank_height": "Custom tank height"
+          "custom_tank_height": "Custom tank height",
+          "tank_capacity": "Tank capacity"
         },
         "data_description": {
-          "custom_tank_height": "Maximum usable fill height of the tank in millimeters. For horizontal tanks, measure and enter the inner diameter. Set to 0 to disable the fill percentage sensor."
+          "custom_tank_height": "Maximum usable fill height of the tank in millimeters. For horizontal tanks, measure and enter the inner diameter. Set to 0 to disable the fill percentage sensor.",
+          "tank_capacity": "Total usable capacity of the tank in gallons. Used to calculate the volume remaining sensor. Set to 0 to disable the volume sensor."
         },
         "title": "Custom tank height"
       },
       "ibc_tank_config": {
-        "data": {
-          "tank_size": "Tank size"
-        },
+        "data": { "tank_size": "Tank size" },
         "data_description": {
           "tank_size": "Select a preset IBC tote tank size. Choose 'Custom' to enter the tank height manually."
         },
@@ -41,10 +41,12 @@
       },
       "reconfigure_custom_height": {
         "data": {
-          "custom_tank_height": "[%key:component::mopeka::config::step::custom_height::data::custom_tank_height%]"
+          "custom_tank_height": "[%key:component::mopeka::config::step::custom_height::data::custom_tank_height%]",
+          "tank_capacity": "[%key:component::mopeka::config::step::custom_height::data::tank_capacity%]"
         },
         "data_description": {
-          "custom_tank_height": "[%key:component::mopeka::config::step::custom_height::data_description::custom_tank_height%]"
+          "custom_tank_height": "[%key:component::mopeka::config::step::custom_height::data_description::custom_tank_height%]",
+          "tank_capacity": "[%key:component::mopeka::config::step::custom_height::data_description::tank_capacity%]"
         },
         "title": "[%key:component::mopeka::config::step::custom_height::title%]"
       },
@@ -67,9 +69,7 @@
         "title": "[%key:component::mopeka::config::step::tank_config::title%]"
       },
       "tank_config": {
-        "data": {
-          "tank_size": "Tank size"
-        },
+        "data": { "tank_size": "Tank size" },
         "data_description": {
           "tank_size": "Select a preset tank size. Choose 'Custom' to enter the tank height manually."
         },
@@ -120,19 +120,20 @@
           "custom": "Custom"
         }
       },
-      "tank_level_percent": {
-        "name": "Tank fill"
-      }
+      "tank_level_percent": { "name": "Tank fill" },
+      "tank_volume": { "name": "Tank volume" }
     }
   },
   "options": {
     "step": {
       "custom_height": {
         "data": {
-          "custom_tank_height": "[%key:component::mopeka::config::step::custom_height::data::custom_tank_height%]"
+          "custom_tank_height": "[%key:component::mopeka::config::step::custom_height::data::custom_tank_height%]",
+          "tank_capacity": "[%key:component::mopeka::config::step::custom_height::data::tank_capacity%]"
         },
         "data_description": {
-          "custom_tank_height": "[%key:component::mopeka::config::step::custom_height::data_description::custom_tank_height%]"
+          "custom_tank_height": "[%key:component::mopeka::config::step::custom_height::data_description::custom_tank_height%]",
+          "tank_capacity": "[%key:component::mopeka::config::step::custom_height::data_description::tank_capacity%]"
         },
         "title": "[%key:component::mopeka::config::step::custom_height::title%]"
       },
@@ -165,9 +166,9 @@
   "selector": {
     "ibc_tank_size": {
       "options": {
+        "custom": "Custom",
         "ibc_275gal": "275 gal IBC tote (38.5 in / 98 cm)",
-        "ibc_330gal": "330 gal IBC tote (46 in / 114 cm)",
-        "custom": "Custom"
+        "ibc_330gal": "330 gal IBC tote (46 in / 114 cm)"
       }
     },
     "tank_size": {

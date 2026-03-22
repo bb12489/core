@@ -9,6 +9,7 @@ DOMAIN = "mopeka"
 
 CONF_CUSTOM_TANK_HEIGHT: Final = "custom_tank_height"
 CONF_MEDIUM_TYPE: Final = "medium_type"
+CONF_TANK_CAPACITY: Final = "tank_capacity"
 CONF_TANK_SIZE: Final = "tank_size"
 CONF_TOP_MOUNT: Final = "top_mount"
 
@@ -22,6 +23,7 @@ TOP_MOUNT_MODEL_IDS: Final[frozenset[int]] = frozenset({0x0A, 0x0B})
 
 DEFAULT_MEDIUM_TYPE: Final = MediumType.PROPANE.value
 DEFAULT_CUSTOM_TANK_HEIGHT: Final = 0
+DEFAULT_TANK_CAPACITY: Final = 0.0
 
 
 class TankSize(StrEnum):
@@ -46,7 +48,11 @@ class TankSize(StrEnum):
 DEFAULT_TANK_SIZE: Final = TankSize.LB_20
 
 # Ordered list of tank sizes shown in the IBC tote preset selector (non-propane media).
-IBC_TANK_SIZES: Final[list[TankSize]] = [TankSize.IBC_275, TankSize.IBC_330, TankSize.CUSTOM]
+IBC_TANK_SIZES: Final[list[TankSize]] = [
+    TankSize.IBC_275,
+    TankSize.IBC_330,
+    TankSize.CUSTOM,
+]
 
 DEFAULT_IBC_TANK_SIZE: Final = TankSize.IBC_275
 
@@ -111,3 +117,24 @@ HORIZONTAL_TANK_SIZES: Final[frozenset[str]] = frozenset(
         TankSize.GAL_29_3_RV_H,
     }
 )
+
+# Total usable capacity in gallons for each preset tank size.  Used to synthesize
+# the "tank volume remaining" sensor.  For pound-rated propane cylinders the
+# value is the liquid propane capacity at max fill (propane ≈ 4.236 lb/gal).
+# For gallon-labelled and IBC presets the label value is used directly.
+# Custom tanks supply their own capacity via CONF_TANK_CAPACITY.
+TANK_SIZE_CAPACITIES: Final[dict[str, float]] = {
+    TankSize.LB_20: 4.7,
+    TankSize.LB_30: 7.1,
+    TankSize.LB_40: 9.4,
+    TankSize.LB_100: 23.6,
+    TankSize.GAL_100_H: 100.0,
+    TankSize.GAL_500_H: 500.0,
+    TankSize.GAL_1000_H: 1000.0,
+    TankSize.GAL_12_2_RV_H: 12.2,
+    TankSize.GAL_16_RV_H: 16.0,
+    TankSize.GAL_20_3_RV_H: 20.3,
+    TankSize.GAL_29_3_RV_H: 29.3,
+    TankSize.IBC_275: 275.0,
+    TankSize.IBC_330: 330.0,
+}
