@@ -32,6 +32,7 @@ from .const import (
     DOMAIN,
     IBC_TANK_SIZES,
     MOPEKA_MANUFACTURER_ID,
+    PROPANE_TANK_SIZES,
     TOP_MOUNT_MODEL_IDS,
     MediumType,
     TankSize,
@@ -103,7 +104,7 @@ def _async_generate_tank_schema(
                 CONF_TANK_SIZE, default=tank_size or DEFAULT_TANK_SIZE
             ): selector.SelectSelector(
                 selector.SelectSelectorConfig(
-                    options=[size.value for size in TankSize],
+                    options=[size.value for size in PROPANE_TANK_SIZES],
                     mode=selector.SelectSelectorMode.DROPDOWN,
                     translation_key="tank_size",
                 )

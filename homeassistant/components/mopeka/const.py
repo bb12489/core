@@ -47,6 +47,22 @@ class TankSize(StrEnum):
 
 DEFAULT_TANK_SIZE: Final = TankSize.LB_20
 
+# Ordered list of tank sizes shown in the propane preset selector.
+PROPANE_TANK_SIZES: Final[list[TankSize]] = [
+    TankSize.LB_20,
+    TankSize.LB_30,
+    TankSize.LB_40,
+    TankSize.LB_100,
+    TankSize.GAL_100_H,
+    TankSize.GAL_500_H,
+    TankSize.GAL_1000_H,
+    TankSize.GAL_12_2_RV_H,
+    TankSize.GAL_16_RV_H,
+    TankSize.GAL_20_3_RV_H,
+    TankSize.GAL_29_3_RV_H,
+    TankSize.CUSTOM,
+]
+
 # Ordered list of tank sizes shown in the IBC tote preset selector (non-propane media).
 IBC_TANK_SIZES: Final[list[TankSize]] = [
     TankSize.IBC_275,

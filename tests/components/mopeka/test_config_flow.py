@@ -17,6 +17,7 @@ from homeassistant.components.mopeka.const import (
 )
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
+from homeassistant.helpers.selector import SelectSelector
 
 from . import NOT_MOPEKA_SERVICE_INFO, PRO_SERVICE_INFO, TD_SERVICE_INFO
 
@@ -61,6 +62,68 @@ async def test_async_step_bluetooth_valid_device(hass: HomeAssistant) -> None:
         CONF_TOP_MOUNT: False,
     }
     assert result3["result"].unique_id == "aa:bb:cc:dd:ee:ff"
+
+
+async def test_async_step_bluetooth_propane_selector_excludes_ibc(
+    hass: HomeAssistant,
+) -> None:
+    """Test propane tank selector does not offer IBC presets."""
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN,
+        context={"source": config_entries.SOURCE_BLUETOOTH},
+        data=PRO_SERVICE_INFO,
+    )
+    assert result["type"] is FlowResultType.FORM
+    assert result["step_id"] == "bluetooth_confirm"
+
+    result2 = await hass.config_entries.flow.async_configure(
+        result["flow_id"],
+        user_input={CONF_MEDIUM_TYPE: MediumType.PROPANE.value},
+    )
+    assert result2["type"] is FlowResultType.FORM
+    assert result2["step_id"] == "tank_config"
+
+    schema = result2["data_schema"].schema
+    selector = schema[vol.Required(CONF_TANK_SIZE)]
+    assert isinstance(selector, SelectSelector)
+    cfg = selector.config
+    options = cfg["options"] if isinstance(cfg, dict) else cfg.options
+
+    assert TankSize.CUSTOM.value in options
+    assert TankSize.IBC_275.value not in options
+    assert TankSize.IBC_330.value not in options
+
+
+async def test_async_step_bluetooth_non_propane_selector_only_ibc_and_custom(
+    hass: HomeAssistant,
+) -> None:
+    """Test non-propane selector offers IBC presets and Custom only."""
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN,
+        context={"source": config_entries.SOURCE_BLUETOOTH},
+        data=PRO_SERVICE_INFO,
+    )
+    assert result["type"] is FlowResultType.FORM
+    assert result["step_id"] == "bluetooth_confirm"
+
+    result2 = await hass.config_entries.flow.async_configure(
+        result["flow_id"],
+        user_input={CONF_MEDIUM_TYPE: MediumType.DIESEL.value},
+    )
+    assert result2["type"] is FlowResultType.FORM
+    assert result2["step_id"] == "ibc_tank_config"
+
+    schema = result2["data_schema"].schema
+    selector = schema[vol.Required(CONF_TANK_SIZE)]
+    assert isinstance(selector, SelectSelector)
+    cfg = selector.config
+    options = cfg["options"] if isinstance(cfg, dict) else cfg.options
+
+    assert TankSize.IBC_275.value in options
+    assert TankSize.IBC_330.value in options
+    assert TankSize.CUSTOM.value in options
+    assert TankSize.LB_20.value not in options
+    assert TankSize.GAL_100_H.value not in options
 
 
 async def test_async_step_bluetooth_valid_device_custom_tank(
